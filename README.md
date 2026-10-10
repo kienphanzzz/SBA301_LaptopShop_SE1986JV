@@ -116,6 +116,16 @@ GET    /api/admin/reports/sales
 
 **Các URL trên chỉ là gợi ý để thảo luận** với nhóm BE, không phải endpoints đã có trong tài liệu hoặc đã triển khai. Khi có BE: tạo `src/api/axiosClient.js`, thay dữ liệu/handlers trong `App.jsx` và page bằng các API tương ứng. **Không đưa mật khẩu, khóa bí mật hay hash vào localStorage**. Xác thực nên dùng giải pháp token/session BE an toàn.
 
+## UI/UX cải tiến (bổ sung sau Phase 1)
+
+| Tính năng | Mô tả | File |
+|---|---|---|
+| 🔔 Toast notification | Thay thế Alert đơn lẻ bằng toast xuất hiện góc phải dưới, tự tắt sau 3.5s, hỗ trợ nhiều toast cùng lúc | `components/Toast.jsx` |
+| 🚫 Trang 404 | Trang "Không tìm thấy" đẹp với gradient text, nút về trang chủ | `components/NotFound.jsx` |
+| ⬆ Back-to-top | Nút cuộn lên đầu trang xuất hiện khi scroll xuống 300px | `components/BackToTop.jsx` |
+| 📦 Stock badge | Badge màu xanh/vàng/đỏ trên card sản phẩm: "Còn hàng" / "Còn N cái" / "Hết hàng" | `components/Ui.jsx` |
+| ⏳ Skeleton loading | Placeholder animation khi danh sách sản phẩm đang tải (800ms) | `components/Ui.jsx`, `pages/Catalog.jsx` |
+
 ## Kiểm tra nhanh trước khi commit Git
 
 - `npm run build` không lỗi.
