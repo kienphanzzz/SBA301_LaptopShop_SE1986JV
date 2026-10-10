@@ -14,7 +14,7 @@ export function Login({ onLogin }) {
     <Form onSubmit={submit}><Form.Group className="mb-3"><Form.Label>Email</Form.Label><Form.Control type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="Nhập email"/></Form.Group>
     <Form.Group className="mb-4"><Form.Label>Mật khẩu</Form.Label><Form.Control type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Nhập mật khẩu"/></Form.Group>
     <Button className="w-100" variant="danger" type="submit">Đăng nhập</Button></Form>
-    <div className="demo-accounts"><strong>Tài khoản dùng thử (không phải xác thực thật)</strong><button onClick={() => { setEmail('khach@laptophub.demo'); setPassword('123456'); }}>Customer · Điền tài khoản</button><button onClick={() => { setEmail('admin@laptophub.demo'); setPassword('123456'); }}>Admin · Điền tài khoản</button><small>Mật khẩu chung: 123456. Không dùng thông tin cá nhân thật.</small></div>
+    <div className="demo-accounts"><strong>Tài khoản thử nghiệm nhanh</strong><button type="button" onClick={() => { setEmail('khach@laptophub.demo'); setPassword('123456'); }}>Customer · Điền tài khoản</button><button type="button" onClick={() => { setEmail('admin@laptophub.demo'); setPassword('123456'); }}>Admin · Điền tài khoản</button><small>Mật khẩu dùng chung: 123456</small></div>
     <p className="account-bottom">Chưa có tài khoản? <Link to="/register">Đăng ký Customer</Link></p>
   </div></Container>;
 }
@@ -28,11 +28,10 @@ export function Register({ onRegister }) {
     if (!form.fullName.trim() || !isValidEmail(form.email) || !isValidPhone(form.phone) || form.password.length < 6) { setError('Vui lòng nhập họ tên, email hợp lệ, SĐT 9–11 chữ số và mật khẩu ít nhất 6 ký tự.'); return; }
     setError(onRegister(form));
   }
-  return <Container className="account-wrap"><div className="account-card"><div className="eyebrow">TẠO TÀI KHOẢN</div><h2>Đăng ký Customer</h2><p>Đăng ký công khai không thể tạo tài khoản Admin.</p>
+  return <Container className="account-wrap"><div className="account-card"><div className="eyebrow">TẠO TÀI KHOẢN</div><h2>Đăng ký Customer</h2><p>Đăng ký tài khoản để bắt đầu mua sắm tại LaptopHub.</p>
     {error && <Alert variant="danger">{error}</Alert>}
     <Form onSubmit={submit}>{[{name:'fullName',label:'Họ và tên',type:'text'},{name:'email',label:'Email',type:'email'},{name:'phone',label:'Số điện thoại',type:'tel'},{name:'password',label:'Mật khẩu',type:'password'}].map((field) => <Form.Group key={field.name} className="mb-3"><Form.Label>{field.label}</Form.Label><Form.Control name={field.name} type={field.type} value={form[field.name]} onChange={change} required/></Form.Group>)}
-    <Button type="submit" variant="danger" className="w-100">Tạo tài khoản demo</Button></Form>
-    <Alert variant="secondary" className="mt-3 small">Bản frontend tuần 6 chỉ mô phỏng đăng ký: không lưu mật khẩu trên trình duyệt. Xác thực thật và hash mật khẩu sẽ làm trong Spring Boot.</Alert>
+    <Button type="submit" variant="danger" className="w-100">Đăng ký tài khoản</Button></Form>
     <p className="account-bottom">Đã có tài khoản? <Link to="/login">Đăng nhập</Link></p>
   </div></Container>;
 }

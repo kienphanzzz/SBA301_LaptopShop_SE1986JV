@@ -50,11 +50,11 @@ export default function App() {
     const found = data.users.find((item) => item.email === emailText && item.status === 'ACTIVE');
     if (!found) return 'Tài khoản không hoạt động.';
     setSessionId(found.id);
-    showNotice('Đăng nhập chế độ demo thành công.');
+    showNotice('Đăng nhập thành công.');
     navigate(found.role === 'ADMIN' ? '/admin' : '/');
     return '';
   }
-  function logout() { setSessionId(null); showNotice('Đã đăng xuất khỏi phiên demo.', 'info'); navigate('/'); }
+  function logout() { setSessionId(null); showNotice('Đã đăng xuất thành công.', 'info'); navigate('/'); }
   function register(form) {
     if (data.users.some((item) => item.email.toLowerCase() === form.email.trim().toLowerCase())) return 'Email đã được sử dụng.';
     const id = Math.max(...data.users.map((item) => item.id), 0) + 1;
@@ -62,13 +62,13 @@ export default function App() {
     // Không lưu password lên trình duyệt. Chức năng đăng nhập thật phải do backend xử lý.
     setData((prev) => ({ ...prev, users: [...prev.users, newUser] }));
     setSessionId(id);
-    showNotice('Đã tạo hồ sơ Customer trong bản demo.');
+    showNotice('Đăng ký tài khoản thành công.');
     navigate('/profile');
     return '';
   }
   function updateProfile(form) {
     setData((prev) => ({ ...prev, users: prev.users.map((item) => item.id === user.id ? { ...item, fullName: form.fullName.trim(), phone: form.phone.trim(), address: form.address.trim() } : item) }));
-    showNotice('Đã lưu hồ sơ demo.');
+    showNotice('Đã cập nhật hồ sơ cá nhân.');
   }
   function needCustomer() {
     if (user?.role !== 'CUSTOMER') { showNotice('Đăng nhập Customer để thực hiện chức năng này.', 'warning'); navigate('/login'); return false; }
@@ -119,7 +119,7 @@ export default function App() {
       }),
       cart: { ...prev.cart, [customerId]: [] },
     }));
-    showNotice('Đặt hàng demo thành công. Mã đơn #' + id);
+    showNotice('Đặt hàng thành công. Mã đơn #' + id);
     return { id };
   }
   function cancelOrder(orderId) {
@@ -132,7 +132,7 @@ export default function App() {
         return line ? { ...product, stockQuantity: product.stockQuantity + line.quantity } : product;
       }),
     }));
-    showNotice('Đã hủy đơn, số lượng hàng được hoàn về kho demo.');
+    showNotice('Đã hủy đơn, số lượng hàng được hoàn về kho.');
   }
   function confirmReceipt(orderId) {
     const order = data.orders.find((item) => item.id === Number(orderId) && item.userId === user?.id);
@@ -174,7 +174,7 @@ export default function App() {
     showNotice('Đã chuyển trạng thái đơn hàng.');
     return '';
   }
-  function resetDemo() { setData(initialData); setSessionId(null); showNotice('Đã khôi phục dữ liệu demo.', 'info'); navigate('/'); }
+  function resetDemo() { setData(initialData); setSessionId(null); showNotice('Đã khôi phục dữ liệu ban đầu.', 'info'); navigate('/'); }
 
   return <Routes>
     <Route element={<SiteLayout user={user} onLogout={logout} cartCount={cartCount} wishCount={wishIds.length} notice={notice} onDismiss={() => setNotice(null)} />}>

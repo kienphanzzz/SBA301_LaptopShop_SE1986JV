@@ -16,7 +16,7 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, notic
       <div className="top-strip">
         <Container className="d-flex justify-content-between flex-wrap gap-2">
           <span>✓ Laptop chính hãng &nbsp; ✓ Tư vấn lựa chọn &nbsp; ✓ Giao hàng COD</span>
-          <span>Bài tập SBA301 · Frontend demo</span>
+          <span>Hotline hỗ trợ: 1900 6868 · Mở cửa 8:00 - 21:30</span>
         </Container>
       </div>
       <Navbar expand="lg" className="main-navbar" variant="dark">
@@ -48,17 +48,16 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, notic
           </Navbar.Collapse>
         </Container>
       </Navbar>
-      <div className="demo-note">DỮ LIỆU DEMO · Giao diện tuần 6, chưa kết nối API Spring Boot</div>
       {notice && <Container className="mt-3"><Alert variant={notice.variant || 'info'} dismissible onClose={onDismiss}>{notice.text}</Alert></Container>}
       <main className="page-main"><Outlet /></main>
       <footer className="site-footer">
         <Container>
           <div className="footer-grid">
-            <div><h5 className="footer-brand">LAPTOPHUB</h5><p>Giao diện đồ án Laptop Shop Management System · SBA301</p></div>
+            <div><h5 className="footer-brand">LAPTOPHUB</h5><p>Hệ thống bán lẻ laptop chính hãng uy tín, đa dạng cấu hình cho học tập, làm việc và gaming.</p></div>
             <div><h6>Khám phá</h6><Link to="/">Danh sách laptop</Link><Link to="/login">Tài khoản</Link></div>
-            <div><h6>Thông tin demo</h6><p>Giá và sản phẩm minh họa, không phải giao dịch thương mại thực tế.</p></div>
+            <div><h6>Chính sách & Bảo hành</h6><p>Bảo hành chính hãng 12-24 tháng. Miễn phí vận chuyển toàn quốc cho đơn hàng COD.</p></div>
           </div>
-          <div className="footer-bottom">© 2026 LaptopHub · Project nhóm SBA301</div>
+          <div className="footer-bottom">© 2026 LAPTOPHUB · Hệ thống phân phối laptop chính hãng</div>
         </Container>
       </footer>
     </>

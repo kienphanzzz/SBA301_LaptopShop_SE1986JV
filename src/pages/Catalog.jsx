@@ -3,6 +3,76 @@ import { Button, Col, Container, Form, Row } from 'react-bootstrap';
 import { Link, useSearchParams } from 'react-router-dom';
 import { EmptyState, PageTitle, ProductCard } from '../components/Ui';
 
+// Component danh sách ngắn theo nhóm nhu cầu từ dữ liệu ban đầu
+function FeaturedLaptopShortlists({ products, brands, user, wishIds, onAddCart, onToggleWish, onSelectCategory }) {
+  const [activeGroupId, setActiveGroupId] = useState(1);
+
+  const groups = [
+    { id: 1, title: 'Laptop học tập', desc: 'Thiết kế gọn gàng, hiệu năng mượt mà cho học tập và tin học văn phòng', icon: '🎓' },
+    { id: 2, title: 'Laptop gaming', desc: 'Cấu hình mạnh mẽ, đồ họa rời mượt mà cho game và tác vụ kỹ thuật', icon: '🎮' },
+    { id: 3, title: 'Laptop mỏng nhẹ', desc: 'Thời trang, mỏng nhẹ cao cấp, thời lượng pin dài tiện di chuyển', icon: '✨' },
+  ];
+
+  // Lọc danh sách ngắn từ dữ liệu theo categoryId đang chọn
+  const shortList = products
+    .filter((item) => item.status === 'ACTIVE' && item.categoryId === activeGroupId)
+    .slice(0, 3);
+
+  const currentGroup = groups.find((g) => g.id === activeGroupId);
+
+  return (
+    <div className="featured-shortlist-box my-4 p-4 bg-white rounded-3 border">
+      <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <div className="eyebrow">GỢI Ý NHANH</div>
+          <h3 className="h5 mb-1 fw-bold">{currentGroup?.title}</h3>
+          <p className="text-muted small mb-0">{currentGroup?.desc}</p>
+        </div>
+        <div className="d-flex flex-wrap gap-2">
+          {groups.map((group) => (
+            <Button
+              key={group.id}
+              variant={activeGroupId === group.id ? 'danger' : 'outline-secondary'}
+              size="sm"
+              className="rounded-pill px-3"
+              onClick={() => setActiveGroupId(group.id)}
+            >
+              {group.icon} {group.title}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <Row className="g-3">
+        {shortList.map((product) => (
+          <Col md={4} key={product.id}>
+            <ProductCard
+              product={product}
+              brands={brands}
+              user={user}
+              isFavorite={wishIds.includes(product.id)}
+              onAddCart={onAddCart}
+              onToggleWish={onToggleWish}
+            />
+          </Col>
+        ))}
+      </Row>
+      <div className="text-center mt-3 pt-2">
+        <Button
+          variant="outline-danger"
+          size="sm"
+          onClick={() => {
+            onSelectCategory(String(activeGroupId));
+            const target = document.getElementById('products');
+            if (target) target.scrollIntoView({ behavior: 'smooth' });
+          }}
+        >
+          Xem toàn bộ nhóm “{currentGroup?.title}” ở danh mục bên dưới ↓
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Catalog({ data, user, wishIds, onAddCart, onToggleWish }) {
   const [params, setParams] = useSearchParams();
   const [keyword, setKeyword] = useState(params.get('q') || '');
@@ -12,6 +82,14 @@ export default function Catalog({ data, user, wishIds, onAddCart, onToggleWish }
   const [sort, setSort] = useState('');
   useEffect(() => { setKeyword(params.get('q') || ''); }, [params]);
   const keywordText = (params.get('q') || '').toLowerCase().trim();
+
+  const quickCategories = [
+    { id: '', name: 'Tất cả laptop' },
+    { id: '1', name: 'Văn phòng – học tập' },
+    { id: '2', name: 'Gaming' },
+    { id: '3', name: 'Mỏng nhẹ – cao cấp' },
+    { id: '4', name: 'Đồ họa – kỹ thuật' },
+  ];
 
   let products = data.products.filter((item) => item.status === 'ACTIVE');
   if (keywordText) products = products.filter((item) => (item.name + ' ' + item.specs + ' ' + item.description).toLowerCase().includes(keywordText));
@@ -43,8 +121,37 @@ export default function Catalog({ data, user, wishIds, onAddCart, onToggleWish }
         <Col md={4}><div className="benefit-card"><b>🛡️</b><div><strong>Thông tin minh bạch</strong><span>Cấu hình, giá và tồn kho rõ ràng</span></div></div></Col>
         <Col md={4}><div className="benefit-card"><b>💻</b><div><strong>Đủ nhóm nhu cầu</strong><span>Học tập, gaming, đồ họa, văn phòng</span></div></div></Col>
       </Row>
+
+      {/* Danh sách ngắn gợi ý theo nhu cầu: Laptop học tập, Laptop gaming, Laptop mỏng nhẹ */}
+      <FeaturedLaptopShortlists
+        products={data.products}
+        brands={data.brands}
+        user={user}
+        wishIds={wishIds}
+        onAddCart={onAddCart}
+        onToggleWish={onToggleWish}
+        onSelectCategory={setCategory}
+      />
+
       <section id="products" className="catalog-section">
         <PageTitle tag="DANH MỤC SẢN PHẨM" title="Laptop dành cho bạn" description="Tìm nhanh chiếc laptop phù hợp với học tập và công việc." />
+
+        {/* Thanh lựa chọn nhanh danh mục */}
+        <div className="quick-category-bar mb-4 p-3 bg-white rounded-3 border d-flex flex-wrap align-items-center gap-2">
+          <span className="fw-bold text-secondary me-2 small">Lựa chọn nhanh:</span>
+          {quickCategories.map((item) => (
+            <Button
+              key={item.id}
+              variant={category === item.id ? 'danger' : 'outline-secondary'}
+              size="sm"
+              className="rounded-pill px-3"
+              onClick={() => setCategory(item.id)}
+            >
+              {item.name}
+            </Button>
+          ))}
+        </div>
+
         <Row className="g-4">
           <Col lg={3}>
             <div className="filter-panel">
