@@ -3,6 +3,7 @@ import { Container, Button } from 'react-bootstrap';
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { initialData } from './data/seed';
 import SiteLayout from './components/SiteLayout';
+import NotFound from './components/NotFound';
 import Catalog from './pages/Catalog';
 import ProductDetails from './pages/ProductDetails';
 import { Login, Register, Profile } from './pages/Account';
@@ -30,7 +31,7 @@ function OnlyRole({ user, role, children }) {
 export default function App() {
   const [data, setData] = useState(readDemoData);
   const [sessionId, setSessionId] = useState(readSession);
-  const [notice, setNotice] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const navigate = useNavigate();
   const user = data.users.find((item) => item.id === sessionId) || null;
   const customerId = user?.role === 'CUSTOMER' ? String(user.id) : '';
@@ -41,7 +42,13 @@ export default function App() {
   useEffect(() => { localStorage.setItem('laptopshop_demo_data', JSON.stringify(data)); }, [data]);
   useEffect(() => { localStorage.setItem('laptopshop_demo_session', JSON.stringify(sessionId)); }, [sessionId]);
 
-  function showNotice(text, variant = 'success') { setNotice({ text, variant }); }
+  function addToast(text, variant = 'success') {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, text, variant }]);
+  }
+  function removeToast(id) { setToasts((prev) => prev.filter((t) => t.id !== id)); }
+  // Backward-compat alias
+  function showNotice(text, variant = 'success') { addToast(text, variant); }
   function login(email, password) {
     // Chỉ 2 tài khoản DEMO; khi có BE sẽ thay bằng axios.post('/api/auth/login').
     if (password !== '123456') return 'Mật khẩu demo không đúng.';
@@ -177,7 +184,7 @@ export default function App() {
   function resetDemo() { setData(initialData); setSessionId(null); showNotice('Đã khôi phục dữ liệu ban đầu.', 'info'); navigate('/'); }
 
   return <Routes>
-    <Route element={<SiteLayout user={user} onLogout={logout} cartCount={cartCount} wishCount={wishIds.length} notice={notice} onDismiss={() => setNotice(null)} />}>
+    <Route element={<SiteLayout user={user} onLogout={logout} cartCount={cartCount} wishCount={wishIds.length} toasts={toasts} onRemoveToast={removeToast} />}>
       <Route path="/" element={<Catalog data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
       <Route path="/laptops/:id" element={<ProductDetails data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
       <Route path="/login" element={<Login onLogin={login} />} />
@@ -196,7 +203,7 @@ export default function App() {
       <Route path="/admin/orders" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminOrders data={data} /></OnlyRole>} />
       <Route path="/admin/orders/:id" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminOrderDetails data={data} onAdvance={advanceOrder} /></OnlyRole>} />
       <Route path="/admin/reports" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminReports data={data} /></OnlyRole>} />
-      <Route path="*" element={<Container className="py-5"><h2>404 - Không tìm thấy trang</h2><Button as={Link} to="/" variant="danger">Về trang chủ</Button></Container>} />
+      <Route path="*" element={<NotFound />} />
     </Route>
   </Routes>;
 }

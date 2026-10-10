@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Col, Container, Form, Row } from 'react-bootstrap';
 import { Link, useSearchParams } from 'react-router-dom';
-import { EmptyState, PageTitle, ProductCard } from '../components/Ui';
+import { CatalogSkeleton, EmptyState, PageTitle, ProductCard } from '../components/Ui';
 
 // Component danh sách ngắn theo nhóm nhu cầu từ dữ liệu ban đầu
 function FeaturedLaptopShortlists({ products, brands, user, wishIds, onAddCart, onToggleWish, onSelectCategory }) {
@@ -80,7 +80,10 @@ export default function Catalog({ data, user, wishIds, onAddCart, onToggleWish }
   const [category, setCategory] = useState('');
   const [priceRange, setPriceRange] = useState('');
   const [sort, setSort] = useState('');
+  const [loading, setLoading] = useState(true);
   useEffect(() => { setKeyword(params.get('q') || ''); }, [params]);
+  // Giả lập loading lần đầu khi trang tải
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 800); return () => clearTimeout(t); }, []);
   const keywordText = (params.get('q') || '').toLowerCase().trim();
 
   const quickCategories = [
@@ -167,8 +170,12 @@ export default function Catalog({ data, user, wishIds, onAddCart, onToggleWish }
           </Col>
           <Col lg={9}>
             <div className="result-toolbar"><span><strong>{products.length}</strong> sản phẩm phù hợp</span><Form.Select aria-label="Sắp xếp" value={sort} onChange={(e) => setSort(e.target.value)}><option value="">Sắp xếp mặc định</option><option value="asc">Giá tăng dần</option><option value="desc">Giá giảm dần</option></Form.Select></div>
-            {products.length === 0 ? <EmptyState title="Không tìm thấy sản phẩm phù hợp" text="Thử bỏ bớt điều kiện tìm kiếm." /> :
-              <Row className="g-3">{products.map((product) => <Col md={6} xl={4} key={product.id}><ProductCard product={product} brands={data.brands} user={user} isFavorite={wishIds.includes(product.id)} onAddCart={onAddCart} onToggleWish={onToggleWish}/></Col>)}</Row>}
+            {loading
+              ? <CatalogSkeleton count={6} />
+              : products.length === 0
+                ? <EmptyState title="Không tìm thấy sản phẩm phù hợp" text="Thử bỏ bớt điều kiện tìm kiếm." />
+                : <Row className="g-3">{products.map((product) => <Col md={6} xl={4} key={product.id}><ProductCard product={product} brands={data.brands} user={user} isFavorite={wishIds.includes(product.id)} onAddCart={onAddCart} onToggleWish={onToggleWish}/></Col>)}</Row>
+            }
           </Col>
         </Row>
       </section>

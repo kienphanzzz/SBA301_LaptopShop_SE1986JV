@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Alert, Badge, Button, Container, Form, Navbar, Nav } from 'react-bootstrap';
+import { Badge, Button, Container, Form, Navbar, Nav } from 'react-bootstrap';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { ToastContainer } from './Toast';
+import BackToTop from './BackToTop';
 
-export default function SiteLayout({ user, onLogout, cartCount, wishCount, notice, onDismiss }) {
+export default function SiteLayout({ user, onLogout, cartCount, wishCount, toasts, onRemoveToast }) {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
 
@@ -48,7 +50,7 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, notic
           </Navbar.Collapse>
         </Container>
       </Navbar>
-      {notice && <Container className="mt-3"><Alert variant={notice.variant || 'info'} dismissible onClose={onDismiss}>{notice.text}</Alert></Container>}
+      <ToastContainer toasts={toasts} onRemove={onRemoveToast} />
       <main className="page-main"><Outlet /></main>
       <footer className="site-footer">
         <Container>
@@ -60,6 +62,7 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, notic
           <div className="footer-bottom">© 2026 LAPTOPHUB · Hệ thống phân phối laptop chính hãng</div>
         </Container>
       </footer>
+      <BackToTop />
     </>
   );
 }

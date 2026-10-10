@@ -28,7 +28,16 @@ export function ProductCard({ product, brands, onAddCart, onToggleWish, isFavori
         <div className="mt-auto pt-3">
           <div className="product-price">{money(product.price)}</div>
           {product.oldPrice > product.price && <div className="old-price">{money(product.oldPrice)}</div>}
-          <div className="d-flex gap-2 mt-3">
+          {/* Badge tồn kho còn lại */}
+          <div className="stock-badge-row">
+            {!available
+              ? <span className="stock-badge out">Hết hàng</span>
+              : product.stockQuantity <= 5
+                ? <span className="stock-badge low">Còn {product.stockQuantity} cái</span>
+                : <span className="stock-badge ok">Còn hàng</span>
+            }
+          </div>
+          <div className="d-flex gap-2 mt-2">
             <Button as={Link} to={'/laptops/' + product.id} variant="outline-secondary" className="flex-fill">Chi tiết</Button>
             {user?.role !== 'ADMIN' && <Button variant="danger" className="flex-fill" disabled={!available} onClick={() => onAddCart(product.id, 1)}>{available ? 'Thêm giỏ' : 'Hết hàng'}</Button>}
           </div>
@@ -40,4 +49,34 @@ export function ProductCard({ product, brands, onAddCart, onToggleWish, isFavori
 
 export function StatusBadge({ status }) {
   return <Badge className="status-pill" bg={orderVariant(status)}>{orderLabels[status] || status}</Badge>;
+}
+
+// Skeleton loading cho 1 product card
+export function CardSkeleton() {
+  return (
+    <div className="product-card skeleton-card">
+      <div className="skeleton skeleton-img" />
+      <div className="skeleton-body">
+        <div className="skeleton skeleton-line short" />
+        <div className="skeleton skeleton-line" />
+        <div className="skeleton skeleton-line medium" />
+        <div className="skeleton skeleton-line short" />
+        <div className="skeleton skeleton-price" />
+        <div className="skeleton skeleton-btn" />
+      </div>
+    </div>
+  );
+}
+
+// Skeleton cho toàn bộ lưới catalog
+export function CatalogSkeleton({ count = 6 }) {
+  return (
+    <div className="row g-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="col-md-6 col-xl-4">
+          <CardSkeleton />
+        </div>
+      ))}
+    </div>
+  );
 }
