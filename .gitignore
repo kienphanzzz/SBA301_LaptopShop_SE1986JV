@@ -1,6 +1,14 @@
 node_modules
 /dist
+target/
+**/target/
 .env
+**/.env
+**/.env.*
+!**/.env.example
 *.log
 .DS_Store
 .vscode/
+.idea/
+*.iml
+
