@@ -81,22 +81,68 @@ export default function App() {
     if (user?.role !== 'CUSTOMER') { showNotice('Đăng nhập Customer để thực hiện chức năng này.', 'warning'); navigate('/login'); return false; }
     return true;
   }
-  function toggleWish(laptopId) {
-    if (!needCustomer()) return;
-    const oldIds = data.wishlist[customerId] || [];
-    const newIds = oldIds.includes(laptopId) ? oldIds.filter((id) => id !== laptopId) : [...oldIds, laptopId];
-    setData((prev) => ({ ...prev, wishlist: { ...prev.wishlist, [customerId]: newIds } }));
-    showNotice(oldIds.includes(laptopId) ? 'Đã bỏ sản phẩm khỏi wishlist.' : 'Đã thêm vào wishlist.');
+  function syncApiProductList(products, apiProduct) {
+    if (!apiProduct || !apiProduct.id) return products;
+    const targetId = Number(apiProduct.id);
+    const normalized = {
+      id: targetId,
+      sku: apiProduct.sku,
+      name: apiProduct.name,
+      brandId: Number(apiProduct.brandId),
+      brandName: apiProduct.brandName,
+      categoryId: Number(apiProduct.categoryId),
+      categoryName: apiProduct.categoryName,
+      price: Number(apiProduct.price),
+      oldPrice: apiProduct.oldPrice != null ? Number(apiProduct.oldPrice) : null,
+      stockQuantity: Number(apiProduct.stockQuantity),
+      status: apiProduct.status || 'ACTIVE',
+      image: apiProduct.image || '/assets/laptop-silver.svg',
+      description: apiProduct.description || '',
+      specs: apiProduct.specs || '',
+    };
+    const exists = products.some((item) => Number(item.id) === targetId);
+    return exists
+      ? products.map((item) => (Number(item.id) === targetId ? { ...item, ...normalized } : item))
+      : [...products, normalized];
   }
-  function addCart(laptopId, quantity) {
+  function toggleWish(laptopId, apiProduct) {
     if (!needCustomer()) return;
-    const product = data.products.find((item) => item.id === laptopId);
-    const existing = cart.find((item) => item.laptopId === laptopId);
-    if (!product || product.status !== 'ACTIVE' || product.stockQuantity === 0) { showNotice('Sản phẩm không thể đặt mua.', 'warning'); return; }
+    const targetId = Number(laptopId);
+    const alreadyWished = (data.wishlist[customerId] || []).includes(targetId);
+    setData((prev) => {
+      const oldIds = prev.wishlist[customerId] || [];
+      const newIds = oldIds.includes(targetId)
+        ? oldIds.filter((id) => Number(id) !== targetId)
+        : [...oldIds, targetId];
+      return {
+        ...prev,
+        products: syncApiProductList(prev.products, apiProduct),
+        wishlist: { ...prev.wishlist, [customerId]: newIds },
+      };
+    });
+    showNotice(alreadyWished ? 'Đã bỏ sản phẩm khỏi wishlist.' : 'Đã thêm vào wishlist.');
+  }
+  function addCart(laptopId, quantity, apiProduct) {
+    if (!needCustomer()) return;
+    const targetId = Number(laptopId);
+    const product = apiProduct || data.products.find((item) => Number(item.id) === targetId);
+    const existing = cart.find((item) => Number(item.laptopId) === targetId);
+    if (!product || product.status !== 'ACTIVE' || Number(product.stockQuantity) === 0) { showNotice('Sản phẩm không thể đặt mua.', 'warning'); return; }
     const newQuantity = (existing?.quantity || 0) + Number(quantity);
-    if (newQuantity < 1 || newQuantity > product.stockQuantity) { showNotice('Số lượng vượt tồn kho hiện có.', 'danger'); return; }
-    const newCart = existing ? cart.map((item) => item.laptopId === laptopId ? { ...item, quantity: newQuantity } : item) : [...cart, { laptopId, quantity: newQuantity }];
-    setData((prev) => ({ ...prev, cart: { ...prev.cart, [customerId]: newCart } }));
+    if (newQuantity < 1 || newQuantity > Number(product.stockQuantity)) { showNotice('Số lượng vượt tồn kho hiện có.', 'danger'); return; }
+    setData((prev) => {
+      const prevCart = prev.cart[customerId] || [];
+      const prevExisting = prevCart.find((item) => Number(item.laptopId) === targetId);
+      const nextQty = (prevExisting?.quantity || 0) + Number(quantity);
+      const newCart = prevExisting
+        ? prevCart.map((item) => (Number(item.laptopId) === targetId ? { ...item, quantity: nextQty } : item))
+        : [...prevCart, { laptopId: targetId, quantity: nextQty }];
+      return {
+        ...prev,
+        products: syncApiProductList(prev.products, apiProduct),
+        cart: { ...prev.cart, [customerId]: newCart },
+      };
+    });
     showNotice('Đã thêm sản phẩm vào giỏ hàng.');
   }
   function changeCartQuantity(laptopId, quantity) {
