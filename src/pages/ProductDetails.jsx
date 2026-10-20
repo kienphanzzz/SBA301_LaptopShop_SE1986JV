@@ -345,11 +345,10 @@ export default function ProductDetails({ user, wishIds = [], onAddCart, onToggle
             </div>
 
             <div className="detail-policy-box">
-              <div className="detail-section-label mb-2">Cam kết bán hàng tại LaptopHub</div>
+              <div className="detail-section-label mb-2">Thông tin mua hàng tại LaptopHub</div>
               <ul className="detail-policy-list mb-0">
-                <li>Sản phẩm chính hãng, nguyên niêm phong từ nhà sản xuất.</li>
-                <li>Hỗ trợ kiểm tra ngoại quan khi nhận hàng, thanh toán tiền mặt (COD).</li>
-                <li>Bảo hành tiêu chuẩn từ 12 đến 24 tháng theo quy định hãng.</li>
+                <li>Thông tin cấu hình, giá bán và số lượng tồn kho được hiển thị minh bạch theo dữ liệu hệ thống.</li>
+                <li>Hỗ trợ đặt mua trực tuyến và thanh toán tiền mặt khi nhận hàng (COD).</li>
               </ul>
             </div>
           </div>

@@ -25,9 +25,9 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, toast
   return (
     <>
       <div className="top-strip">
-        <Container className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <span>Hệ thống bán lẻ laptop chính hãng · Giao hàng thanh toán khi nhận (COD)</span>
-          <span>Hỗ trợ kỹ thuật &amp; mua hàng: 1900 6868 (08:00 – 21:30)</span>
+        <Container className="d-flex justify-content-between align-items-center">
+          <span>Hệ thống bán lẻ laptop chính hãng · Thanh toán khi nhận hàng (COD)</span>
+          <span className="d-none d-md-inline">Tra cứu cấu hình, giá bán &amp; tồn kho trực tuyến</span>
         </Container>
       </div>
       <Navbar expand="lg" className="main-navbar" variant="dark">
@@ -104,8 +104,8 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, toast
               <Link to="/login">Tài khoản khách hàng</Link>
             </div>
             <div>
-              <h6>Chính sách bán hàng</h6>
-              <p>Bảo hành tiêu chuẩn nhà sản xuất 12–24 tháng. Kiểm tra máy và thanh toán trực tiếp khi nhận hàng (COD).</p>
+              <h6>Chính sách mua hàng</h6>
+              <p>Niêm yết minh bạch cấu hình, giá bán và số lượng tồn kho. Hỗ trợ đặt hàng trực tuyến và thanh toán khi nhận hàng (COD).</p>
             </div>
           </div>
           <div className="footer-bottom">© 2026 LAPTOPHUB · Hệ thống bán lẻ laptop chính hãng</div>

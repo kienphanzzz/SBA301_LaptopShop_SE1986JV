@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Button } from 'react-bootstrap';
+import { Container, Button, Spinner } from 'react-bootstrap';
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { initialData } from './data/seed';
+import { authApi } from './api/authApi';
 import SiteLayout from './components/SiteLayout';
 import NotFound from './components/NotFound';
 import Catalog from './pages/Catalog';
@@ -12,71 +13,140 @@ import { MyOrders, MyOrderDetails } from './pages/MyOrders';
 import AdminLayout from './admin/AdminLayout';
 import { AdminDashboard, AdminProducts, AdminTaxonomy, AdminInventory, AdminOrders, AdminOrderDetails, AdminReports } from './admin/Pages';
 
-// Toàn bộ state demo được lưu trong localStorage. Không phải database thật.
+// Dữ liệu tạm trên localStorage chỉ phục vụ UC-07 đến UC-18 (Wishlist, Cart, Orders, Admin demo).
+// UC-01 đến UC-06 sử dụng API thật và phiên xác thực từ Spring Boot + SQL Server.
 function readDemoData() {
   try { return JSON.parse(localStorage.getItem('laptopshop_demo_data')) || initialData; }
   catch { return initialData; }
 }
-function readSession() {
-  try { return JSON.parse(localStorage.getItem('laptopshop_demo_session')) || null; }
-  catch { return null; }
-}
 
-function OnlyRole({ user, role, children }) {
+function OnlyRole({ user, authChecking, role, children }) {
+  if (authChecking) {
+    return (
+      <Container className="py-5 text-center">
+        <Spinner animation="border" variant="danger" size="sm" className="me-2" />
+        <span className="text-muted">Đang kiểm tra phiên đăng nhập...</span>
+      </Container>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== role) return <Container className="my-5"><h2>Không có quyền truy cập</h2><p>Chức năng này dành cho {role === 'ADMIN' ? 'Admin' : 'Customer'}.</p><Button as={Link} to="/">Về trang chủ</Button></Container>;
+  const allowedRoles = Array.isArray(role) ? role : [role];
+  if (!allowedRoles.includes(user.role)) {
+    return (
+      <Container className="my-5">
+        <h2>Không có quyền truy cập</h2>
+        <p>Chức năng này dành cho {allowedRoles.includes('ADMIN') ? 'Admin' : 'Customer'}.</p>
+        <Button as={Link} to="/" variant="danger">Về trang chủ</Button>
+      </Container>
+    );
+  }
   return children;
 }
 
 export default function App() {
   const [data, setData] = useState(readDemoData);
-  const [sessionId, setSessionId] = useState(readSession);
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [toasts, setToasts] = useState([]);
   const navigate = useNavigate();
-  const user = data.users.find((item) => item.id === sessionId) || null;
+
   const customerId = user?.role === 'CUSTOMER' ? String(user.id) : '';
   const cart = data.cart[customerId] || [];
   const wishIds = data.wishlist[customerId] || [];
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
-  useEffect(() => { localStorage.setItem('laptopshop_demo_data', JSON.stringify(data)); }, [data]);
-  useEffect(() => { localStorage.setItem('laptopshop_demo_session', JSON.stringify(sessionId)); }, [sessionId]);
+  useEffect(() => {
+    localStorage.setItem('laptopshop_demo_data', JSON.stringify(data));
+  }, [data]);
+
+  // Xóa triệt để key giả lập phiên đăng nhập cũ trên localStorage (nếu có) và xác thực trực tiếp với Backend
+  useEffect(() => {
+    localStorage.removeItem('laptopshop_demo_session');
+    let active = true;
+    authApi
+      .getProfile()
+      .then((profile) => {
+        if (!active) return;
+        setUser(profile);
+        syncUserToLocalData(profile);
+      })
+      .catch(() => {
+        if (!active) return;
+        setUser(null);
+      })
+      .finally(() => {
+        if (active) setAuthChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function addToast(text, variant = 'success') {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, text, variant }]);
   }
   function removeToast(id) { setToasts((prev) => prev.filter((t) => t.id !== id)); }
-  // Backward-compat alias
   function showNotice(text, variant = 'success') { addToast(text, variant); }
-  function login(email, password) {
-    // Chỉ 2 tài khoản DEMO; khi có BE sẽ thay bằng axios.post('/api/auth/login').
-    if (password !== '123456') return 'Mật khẩu demo không đúng.';
-    const emailText = email.trim().toLowerCase();
-    if (emailText !== 'khach@laptophub.demo' && emailText !== 'admin@laptophub.demo') return 'Chỉ hỗ trợ hai tài khoản demo có sẵn.';
-    const found = data.users.find((item) => item.email === emailText && item.status === 'ACTIVE');
-    if (!found) return 'Tài khoản không hoạt động.';
-    setSessionId(found.id);
-    showNotice('Đăng nhập thành công.');
-    navigate(found.role === 'ADMIN' ? '/admin' : '/');
-    return '';
+
+  function syncUserToLocalData(profile) {
+    if (!profile || !profile.id) return;
+    const summary = {
+      id: Number(profile.id),
+      fullName: profile.fullName,
+      email: profile.email,
+      phone: profile.phone || '',
+      address: profile.address || '',
+      role: profile.role,
+      status: profile.status,
+    };
+    setData((prev) => {
+      const exists = prev.users.some((u) => Number(u.id) === summary.id);
+      return {
+        ...prev,
+        users: exists
+          ? prev.users.map((u) => (Number(u.id) === summary.id ? { ...u, ...summary } : u))
+          : [...prev.users, summary],
+      };
+    });
   }
-  function logout() { setSessionId(null); showNotice('Đã đăng xuất thành công.', 'info'); navigate('/'); }
-  function register(form) {
-    if (data.users.some((item) => item.email.toLowerCase() === form.email.trim().toLowerCase())) return 'Email đã được sử dụng.';
-    const id = Math.max(...data.users.map((item) => item.id), 0) + 1;
-    const newUser = { id, fullName: form.fullName.trim(), email: form.email.trim().toLowerCase(), phone: form.phone.trim(), address: '', role: 'CUSTOMER', status: 'ACTIVE' };
-    // Không lưu password lên trình duyệt. Chức năng đăng nhập thật phải do backend xử lý.
-    setData((prev) => ({ ...prev, users: [...prev.users, newUser] }));
-    setSessionId(id);
-    showNotice('Đăng ký tài khoản thành công.');
-    navigate('/profile');
-    return '';
+
+  function handleLoginSuccess(profile) {
+    setUser(profile);
+    syncUserToLocalData(profile);
+    showNotice('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');
+    navigate(profile.role === 'ADMIN' ? '/admin' : '/');
   }
-  function updateProfile(form) {
-    setData((prev) => ({ ...prev, users: prev.users.map((item) => item.id === user.id ? { ...item, fullName: form.fullName.trim(), phone: form.phone.trim(), address: form.address.trim() } : item) }));
-    showNotice('Đã cập nhật hồ sơ cá nhân.');
+
+  function handleRegisterSuccess() {
+    showNotice('Đăng ký tài khoản thành công. Vui lòng đăng nhập.');
   }
+
+  function handleProfileUpdated(updatedProfile, showToast = true) {
+    setUser(updatedProfile);
+    syncUserToLocalData(updatedProfile);
+    if (showToast) {
+      showNotice('Đã cập nhật hồ sơ cá nhân.');
+    }
+  }
+
+  function handleSessionExpired() {
+    setUser(null);
+    showNotice('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'warning');
+    navigate('/login', { replace: true });
+  }
+
+  async function logout() {
+    try {
+      await authApi.logout();
+    } catch {
+      // Vẫn xóa state phía client nếu session trên server đã hết hạn trước đó
+    }
+    setUser(null);
+    showNotice('Đã đăng xuất thành công.', 'info');
+    navigate('/');
+  }
+
   function needCustomer() {
     if (user?.role !== 'CUSTOMER') { showNotice('Đăng nhập Customer để thực hiện chức năng này.', 'warning'); navigate('/login'); return false; }
     return true;
@@ -227,28 +297,27 @@ export default function App() {
     showNotice('Đã chuyển trạng thái đơn hàng.');
     return '';
   }
-  function resetDemo() { setData(initialData); setSessionId(null); showNotice('Đã khôi phục dữ liệu ban đầu.', 'info'); navigate('/'); }
 
   return <Routes>
     <Route element={<SiteLayout user={user} onLogout={logout} cartCount={cartCount} wishCount={wishIds.length} toasts={toasts} onRemoveToast={removeToast} />}>
       <Route path="/" element={<Catalog data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
       <Route path="/laptops/:id" element={<ProductDetails data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
-      <Route path="/login" element={<Login onLogin={login} />} />
-      <Route path="/register" element={<Register onRegister={register} />} />
-      <Route path="/profile" element={<OnlyRole user={user} role="CUSTOMER"><Profile user={user} onSave={updateProfile} /></OnlyRole>} />
-      <Route path="/wishlist" element={<OnlyRole user={user} role="CUSTOMER"><Wishlist data={data} wishIds={wishIds} user={user} onToggleWish={toggleWish} onAddCart={addCart} /></OnlyRole>} />
-      <Route path="/cart" element={<OnlyRole user={user} role="CUSTOMER"><Cart data={data} cart={cart} onQuantity={changeCartQuantity} onRemove={removeCart} /></OnlyRole>} />
-      <Route path="/checkout" element={<OnlyRole user={user} role="CUSTOMER"><Checkout data={data} cart={cart} user={user} onPlaceOrder={placeOrder} /></OnlyRole>} />
-      <Route path="/orders" element={<OnlyRole user={user} role="CUSTOMER"><MyOrders data={data} user={user} /></OnlyRole>} />
-      <Route path="/orders/:id" element={<OnlyRole user={user} role="CUSTOMER"><MyOrderDetails data={data} user={user} onCancel={cancelOrder} onConfirm={confirmReceipt} /></OnlyRole>} />
-      <Route path="/admin" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminDashboard data={data} /></OnlyRole>} />
-      <Route path="/admin/laptops" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminProducts data={data} onSave={saveProduct} /></OnlyRole>} />
-      <Route path="/admin/brands" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="brands" onSave={saveTaxonomy} /></OnlyRole>} />
-      <Route path="/admin/categories" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="categories" onSave={saveTaxonomy} /></OnlyRole>} />
-      <Route path="/admin/inventory" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminInventory data={data} onUpdate={updateStock} /></OnlyRole>} />
-      <Route path="/admin/orders" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminOrders data={data} /></OnlyRole>} />
-      <Route path="/admin/orders/:id" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminOrderDetails data={data} onAdvance={advanceOrder} /></OnlyRole>} />
-      <Route path="/admin/reports" element={<OnlyRole user={user} role="ADMIN"><AdminLayout /><AdminReports data={data} /></OnlyRole>} />
+      <Route path="/login" element={<Login user={user} onLoginSuccess={handleLoginSuccess} />} />
+      <Route path="/register" element={<Register user={user} onRegisterSuccess={handleRegisterSuccess} />} />
+      <Route path="/profile" element={<OnlyRole user={user} authChecking={authChecking} role={['CUSTOMER', 'ADMIN']}><Profile user={user} onProfileUpdated={handleProfileUpdated} onSessionExpired={handleSessionExpired} /></OnlyRole>} />
+      <Route path="/wishlist" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Wishlist data={data} wishIds={wishIds} user={user} onToggleWish={toggleWish} onAddCart={addCart} /></OnlyRole>} />
+      <Route path="/cart" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Cart data={data} cart={cart} onQuantity={changeCartQuantity} onRemove={removeCart} /></OnlyRole>} />
+      <Route path="/checkout" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Checkout data={data} cart={cart} user={user} onPlaceOrder={placeOrder} /></OnlyRole>} />
+      <Route path="/orders" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrders data={data} user={user} /></OnlyRole>} />
+      <Route path="/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrderDetails data={data} user={user} onCancel={cancelOrder} onConfirm={confirmReceipt} /></OnlyRole>} />
+      <Route path="/admin" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminDashboard data={data} /></OnlyRole>} />
+      <Route path="/admin/laptops" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminProducts data={data} onSave={saveProduct} /></OnlyRole>} />
+      <Route path="/admin/brands" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="brands" onSave={saveTaxonomy} /></OnlyRole>} />
+      <Route path="/admin/categories" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="categories" onSave={saveTaxonomy} /></OnlyRole>} />
+      <Route path="/admin/inventory" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminInventory data={data} onUpdate={updateStock} /></OnlyRole>} />
+      <Route path="/admin/orders" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminOrders data={data} /></OnlyRole>} />
+      <Route path="/admin/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminOrderDetails data={data} onAdvance={advanceOrder} /></OnlyRole>} />
+      <Route path="/admin/reports" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminReports data={data} /></OnlyRole>} />
       <Route path="*" element={<NotFound />} />
     </Route>
   </Routes>;

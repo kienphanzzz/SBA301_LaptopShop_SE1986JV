@@ -1,7 +1,9 @@
 package fu.laptopshop;
 
 import fu.laptopshop.common.entity.Laptop;
+import fu.laptopshop.common.entity.User;
 import fu.laptopshop.common.enums.CommonStatus;
+import fu.laptopshop.common.enums.UserRole;
 import fu.laptopshop.common.exception.ResourceNotFoundException;
 import fu.laptopshop.common.repository.BrandRepository;
 import fu.laptopshop.common.repository.CartItemRepository;
@@ -16,12 +18,17 @@ import fu.laptopshop.modules.account_catalog.controller.TaxonomyController;
 import fu.laptopshop.modules.account_catalog.dto.BrandResponse;
 import fu.laptopshop.modules.account_catalog.dto.CategoryResponse;
 import fu.laptopshop.modules.account_catalog.dto.LaptopResponse;
+import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -29,11 +36,15 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -73,6 +84,9 @@ class LaptopshopBeApplicationTests {
 
     @Autowired
     private TaxonomyController taxonomyController;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Test
     void contextLoadsAndValidateAll8Tables() {
@@ -251,8 +265,311 @@ class LaptopshopBeApplicationTests {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
 
-        // 6. Protected endpoint /api/v1/profile must NOT be permitAll() -> 401/403
+        // 6. Protected endpoint /api/v1/profile must NOT be permitAll() -> 401
         mockMvc.perform(get("/api/v1/profile"))
-                .andExpect(status().is4xxClientError());
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Transactional
+    void testUc01RegisterCustomerValidationAndSecurity() throws Exception {
+        String registerPayload = """
+                {
+                  "fullName": "Nguyễn Văn Test",
+                  "email": "NewCustomer@LaptopHub.vn",
+                  "phone": "0912345678",
+                  "password": "Password123",
+                  "confirmPassword": "Password123",
+                  "role": "ADMIN",
+                  "status": "INACTIVE"
+                }
+                """;
+
+        // 1. Missing CSRF token on POST -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerPayload))
+                .andExpect(status().isForbidden());
+
+        // 2. Valid registration -> 201 Created, role forced to CUSTOMER, status ACTIVE, no passwordHash
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerPayload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.fullName").value("Nguyễn Văn Test"))
+                .andExpect(jsonPath("$.email").value("newcustomer@laptophub.vn"))
+                .andExpect(jsonPath("$.phone").value("0912345678"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.password").doesNotExist());
+
+        // Verify BCrypt hash stored in DB (not plaintext)
+        User saved = userRepository.findByEmailIgnoreCase("newcustomer@laptophub.vn").orElseThrow();
+        assertNotEquals("Password123", saved.getPasswordHash());
+        assertTrue(passwordEncoder.matches("Password123", saved.getPasswordHash()));
+        assertEquals(UserRole.CUSTOMER, saved.getRole());
+        assertEquals(CommonStatus.ACTIVE, saved.getStatus());
+
+        // 3. Duplicate email (case-insensitive) -> 409 Conflict
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Người Thứ Hai",
+                                  "email": "NEWCUSTOMER@LAPTOPHUB.VN",
+                                  "phone": "0988776655",
+                                  "password": "Password123"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.fieldErrors.email").exists());
+
+        // 4. Invalid email format -> 400 Bad Request
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Nguyễn Văn B",
+                                  "email": "not-an-email",
+                                  "phone": "0988776655",
+                                  "password": "Password123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.email").exists());
+
+        // 5. Short password (< 6 chars) and missing required fields -> 400 Bad Request
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "",
+                                  "email": "valid@laptophub.vn",
+                                  "phone": "123",
+                                  "password": "123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists())
+                .andExpect(jsonPath("$.fieldErrors.phone").exists())
+                .andExpect(jsonPath("$.fieldErrors.password").exists());
+    }
+
+    @Test
+    @Transactional
+    void testUc02LoginAndUc03LogoutFlow() throws Exception {
+        // Register a customer first
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Trần Thị Khách",
+                                  "email": "khachlogin@laptophub.vn",
+                                  "phone": "0905112233",
+                                  "password": "Secret123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        // 1. Login with wrong password -> 401 Unauthorized
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khachlogin@laptophub.vn",
+                                  "password": "WrongPassword"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        // 2. Login with non-existent email -> 401 Unauthorized
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nobody@laptophub.vn",
+                                  "password": "Secret123"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        // 3. Valid Login -> 200 OK, returns CUSTOMER role, creates authenticated session
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khachlogin@laptophub.vn",
+                                  "password": "Secret123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("khachlogin@laptophub.vn"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andReturn();
+
+        HttpSession session = loginResult.getRequest().getSession(false);
+        assertNotNull(session);
+        MockHttpSession authSession = (MockHttpSession) session;
+
+        // 4. Authenticated session can access GET /api/v1/profile
+        mockMvc.perform(get("/api/v1/profile").session(authSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("khachlogin@laptophub.vn"));
+
+        // 5. UC-03 Logout invalidates session
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .with(csrf())
+                        .session(authSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").exists());
+
+        // 6. Using old session after logout -> 401 Unauthorized
+        mockMvc.perform(get("/api/v1/profile").session(authSession))
+                .andExpect(status().isUnauthorized());
+
+        // 7. INACTIVE user login -> 403 Forbidden
+        User user = userRepository.findByEmailIgnoreCase("khachlogin@laptophub.vn").orElseThrow();
+        user.setStatus(CommonStatus.INACTIVE);
+        userRepository.saveAndFlush(user);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khachlogin@laptophub.vn",
+                                  "password": "Secret123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 8. ADMIN user login -> returns role ADMIN from DB
+        User adminUser = User.builder()
+                .fullName("Quản Trị Hệ Thống")
+                .email("admintest@laptophub.vn")
+                .phone("0909999999")
+                .passwordHash(passwordEncoder.encode("AdminPass123"))
+                .role(UserRole.ADMIN)
+                .status(CommonStatus.ACTIVE)
+                .build();
+        userRepository.saveAndFlush(adminUser);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "admintest@laptophub.vn",
+                                  "password": "AdminPass123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("ADMIN"));
+    }
+
+    @Test
+    @Transactional
+    void testUc04ProfileUpdateAndAuthorization() throws Exception {
+        // 1. Guest cannot GET or PUT /api/v1/profile
+        mockMvc.perform(get("/api/v1/profile"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/api/v1/profile")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "Guest Hack",
+                                  "phone": "0912345678",
+                                  "address": "Hà Nội"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        // 2. Register User A and User B
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "User A",
+                                  "email": "usera@laptophub.vn",
+                                  "phone": "0911111111",
+                                  "password": "Password123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "User B",
+                                  "email": "userb@laptophub.vn",
+                                  "phone": "0922222222",
+                                  "password": "Password123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        User userBBefore = userRepository.findByEmailIgnoreCase("userb@laptophub.vn").orElseThrow();
+
+        // 3. Login as User A
+        MvcResult loginA = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "usera@laptophub.vn",
+                                  "password": "Password123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession sessionA = (MockHttpSession) loginA.getRequest().getSession(false);
+        assertNotNull(sessionA);
+
+        // 4. User A updates profile and attempts to tamper with id, email, role, status
+        mockMvc.perform(put("/api/v1/profile")
+                        .with(csrf())
+                        .session(sessionA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.format("""
+                                {
+                                  "id": %d,
+                                  "fullName": "User A Đã Cập Nhật",
+                                  "email": "hacked@laptophub.vn",
+                                  "phone": "0933445566",
+                                  "address": "123 Nguyễn Văn Cừ, Quận 5, TP.HCM",
+                                  "role": "ADMIN",
+                                  "status": "INACTIVE"
+                                }
+                                """, userBBefore.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("User A Đã Cập Nhật"))
+                .andExpect(jsonPath("$.phone").value("0933445566"))
+                .andExpect(jsonPath("$.address").value("123 Nguyễn Văn Cừ, Quận 5, TP.HCM"))
+                .andExpect(jsonPath("$.email").value("usera@laptophub.vn"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        // 5. Verify User B was NOT modified at all
+        User userBAfter = userRepository.findById(userBBefore.getId()).orElseThrow();
+        assertEquals("User B", userBAfter.getFullName());
+        assertEquals("0922222222", userBAfter.getPhone());
+        assertNull(userBAfter.getAddress());
     }
 }
