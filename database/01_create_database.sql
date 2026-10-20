@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    FILE: 01_create_database.sql
    PROJECT: Laptop Shop Management System (SBA301)
    TARGET DBMS: Microsoft SQL Server

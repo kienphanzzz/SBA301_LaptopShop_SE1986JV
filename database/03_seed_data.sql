@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    FILE: 03_seed_data.sql
    PROJECT: Laptop Shop Management System (SBA301)
    TARGET DATABASE: LaptopShopDB (SQL Server)

@@ -62,4 +62,10 @@ public interface LaptopRepository extends JpaRepository<Laptop, Long> {
     );
 
     boolean existsBySkuIgnoreCase(String sku);
+
+    boolean existsBySkuIgnoreCaseAndIdNot(String sku, Long id);
+
+    boolean existsByBrandId(Long brandId);
+
+    boolean existsByCategoryId(Long categoryId);
 }
