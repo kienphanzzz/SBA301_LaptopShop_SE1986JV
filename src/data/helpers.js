@@ -11,7 +11,7 @@ export function categoryName(categories, id) {
 }
 
 export function isValidPhone(value) {
-  return /^\d{9,11}$/.test(value.trim());
+  return /^0\d{8,10}$/.test(value.trim());
 }
 
 export function isValidEmail(value) {

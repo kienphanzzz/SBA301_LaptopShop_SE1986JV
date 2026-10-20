@@ -150,7 +150,7 @@ public class CatalogServiceImpl implements CatalogService {
                 .categoryId(laptop.getCategory().getId())
                 .categoryName(laptop.getCategory().getName())
                 .specs(laptop.getSpecs())
-                .description(laptop.getDescription())
+                .description(cleanDemoPrefix(laptop.getDescription()))
                 .image(laptop.getImage())
                 .price(laptop.getPrice())
                 .oldPrice(laptop.getOldPrice())
@@ -166,7 +166,7 @@ public class CatalogServiceImpl implements CatalogService {
         return BrandResponse.builder()
                 .id(brand.getId())
                 .name(brand.getName())
-                .description(brand.getDescription())
+                .description(cleanDemoPrefix(brand.getDescription()))
                 .status(brand.getStatus())
                 .build();
     }
@@ -175,8 +175,15 @@ public class CatalogServiceImpl implements CatalogService {
         return CategoryResponse.builder()
                 .id(category.getId())
                 .name(category.getName())
-                .description(category.getDescription())
+                .description(cleanDemoPrefix(category.getDescription()))
                 .status(category.getStatus())
                 .build();
+    }
+
+    private String cleanDemoPrefix(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text.replaceFirst("^(?i)\\[DEMO\\]\\s*", "").trim();
     }
 }

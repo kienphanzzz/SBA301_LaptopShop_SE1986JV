@@ -204,6 +204,8 @@ class LaptopshopBeApplicationTests {
         assertEquals("ASU-VB-001", detailResp.getBody().getSku());
         assertEquals("ASUS", detailResp.getBody().getBrandName());
         assertEquals("Văn phòng - học tập", detailResp.getBody().getCategoryName());
+        assertNotNull(detailResp.getBody().getDescription());
+        assertFalse(detailResp.getBody().getDescription().startsWith("[DEMO]"));
 
         // Laptop #3 has oldPrice = NULL
         ResponseEntity<LaptopResponse> laptop3 = laptopController.getLaptopById(3L);
@@ -224,10 +226,12 @@ class LaptopshopBeApplicationTests {
         ResponseEntity<List<BrandResponse>> brands = taxonomyController.getActiveBrands();
         assertNotNull(brands.getBody());
         assertEquals(6, brands.getBody().size());
+        assertTrue(brands.getBody().stream().noneMatch(b -> b.getDescription() != null && b.getDescription().startsWith("[DEMO]")));
 
         ResponseEntity<List<CategoryResponse>> categories = taxonomyController.getActiveCategories();
         assertNotNull(categories.getBody());
         assertEquals(4, categories.getBody().size());
+        assertTrue(categories.getBody().stream().noneMatch(c -> c.getDescription() != null && c.getDescription().startsWith("[DEMO]")));
     }
 
     @Test

@@ -101,7 +101,9 @@ export default function SiteLayout({ user, onLogout, cartCount, wishCount, toast
             <div>
               <h6>Điều hướng</h6>
               <Link to="/">Danh mục sản phẩm</Link>
-              <Link to="/login">Tài khoản khách hàng</Link>
+              <Link to={!user ? '/login' : user.role === 'ADMIN' ? '/admin' : '/profile'}>
+                Tài khoản khách hàng
+              </Link>
             </div>
             <div>
               <h6>Chính sách mua hàng</h6>
