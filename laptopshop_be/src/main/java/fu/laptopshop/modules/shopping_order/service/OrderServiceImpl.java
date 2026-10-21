@@ -17,6 +17,8 @@ import fu.laptopshop.modules.shopping_order.dto.OrderDetailResponse;
 import fu.laptopshop.modules.shopping_order.dto.OrderItemResponse;
 import fu.laptopshop.modules.shopping_order.dto.OrderSummaryResponse;
 import fu.laptopshop.modules.shopping_order.dto.PlaceOrderRequest;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +39,7 @@ public class OrderServiceImpl implements OrderService {
     private final CartItemRepository cartItemRepository;
     private final LaptopRepository laptopRepository;
     private final UserRepository userRepository;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional
@@ -46,11 +52,24 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("Giỏ hàng đang trống. Không thể tạo đơn hàng.");
         }
 
+        Map<Long, Laptop> lockedLaptops = new HashMap<>();
+        for (CartItem cartItem : cartItems.stream()
+                .sorted(Comparator.comparing(item -> item.getLaptop().getId()))
+                .toList()) {
+            Long laptopId = cartItem.getLaptop().getId();
+            if (!lockedLaptops.containsKey(laptopId)) {
+                Laptop laptop = laptopRepository.findByIdForUpdate(laptopId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Laptop không tồn tại với mã #" + laptopId));
+                entityManager.refresh(laptop, LockModeType.PESSIMISTIC_WRITE);
+                lockedLaptops.put(laptopId, laptop);
+            }
+        }
+
         List<OrderItem> orderItems = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (CartItem cartItem : cartItems) {
-            Laptop laptop = cartItem.getLaptop();
+            Laptop laptop = lockedLaptops.get(cartItem.getLaptop().getId());
             if (laptop.getStatus() != CommonStatus.ACTIVE) {
                 throw new IllegalArgumentException("Sản phẩm '" + laptop.getName() + "' hiện đã ngừng kinh doanh.");
             }
@@ -107,7 +126,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public OrderDetailResponse getMyOrderDetail(Long userId, Long orderId) {
-        Order order = orderRepository.findWithItemsByIdAndUserId(orderId, userId)
+        Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng #" + orderId));
         return mapToDetailResponse(order);
     }
@@ -115,23 +134,29 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDetailResponse cancelOrder(Long userId, Long orderId) {
-        Order order = orderRepository.findWithItemsByIdAndUserId(orderId, userId)
+        Order order = orderRepository.findByIdAndUserIdForUpdate(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng #" + orderId));
 
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new IllegalArgumentException("Chỉ được hủy đơn hàng khi trạng thái là PENDING.");
         }
 
+        order = orderRepository.findWithItemsByIdAndUserId(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đơn hàng #" + orderId));
         order.setStatus(OrderStatus.CANCELLED);
 
         if (order.getOrderItems() != null) {
-            for (OrderItem item : order.getOrderItems()) {
-                Laptop laptop = item.getLaptop();
-                if (laptop != null) {
-                    int currentStock = laptop.getStockQuantity() != null ? laptop.getStockQuantity() : 0;
-                    laptop.setStockQuantity(currentStock + item.getQuantity());
-                    laptopRepository.save(laptop);
-                }
+            List<OrderItem> items = order.getOrderItems().stream()
+                    .sorted(Comparator.comparing(item -> item.getLaptop().getId()))
+                    .toList();
+            for (OrderItem item : items) {
+                Laptop laptop = laptopRepository.findByIdForUpdate(item.getLaptop().getId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Laptop không tồn tại với mã #" + item.getLaptop().getId()));
+                entityManager.refresh(laptop, LockModeType.PESSIMISTIC_WRITE);
+                int currentStock = laptop.getStockQuantity() != null ? laptop.getStockQuantity() : 0;
+                laptop.setStockQuantity(currentStock + item.getQuantity());
+                laptopRepository.save(laptop);
             }
         }
 

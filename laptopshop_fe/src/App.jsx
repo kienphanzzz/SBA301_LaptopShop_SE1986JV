@@ -105,11 +105,24 @@ export default function App() {
   useEffect(() => {
     let active = true;
     authApi.getProfile()
-      .then(async (profile) => {
+      .then((profile) => {
         if (!active) return;
         setUser(profile);
-        if (profile.role === 'ADMIN') await refreshAdminData();
-        else await refreshCustomerData(profile.id);
+        const refreshData = profile.role === 'ADMIN'
+          ? refreshAdminData()
+          : refreshCustomerData(profile.id);
+        refreshData.catch((error) => {
+          if (!active) return;
+          if (error?.response?.status === 401) {
+            handleSessionExpired();
+            return;
+          }
+          addToast(
+            'Phiên đăng nhập hợp lệ nhưng không thể tải dữ liệu tài khoản: ' +
+              getApiErrorMessage(error, 'Lỗi tải dữ liệu.'),
+            'warning'
+          );
+        });
       })
       .catch((error) => {
         if (!active) return;
@@ -130,13 +143,21 @@ export default function App() {
 
   async function handleLoginSuccess(profile) {
     setUser(profile);
+    addToast('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');
+    navigate(profile.role === 'ADMIN' ? '/admin' : '/');
     try {
       if (profile.role === 'ADMIN') await refreshAdminData();
       else await refreshCustomerData(profile.id);
-      addToast('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');
-      navigate(profile.role === 'ADMIN' ? '/admin' : '/');
     } catch (error) {
-      handleApiError(error, 'Đăng nhập được nhưng không thể tải dữ liệu tài khoản.');
+      if (error?.response?.status === 401) {
+        handleSessionExpired();
+      } else {
+        addToast(
+          'Đăng nhập thành công nhưng không thể tải dữ liệu tài khoản: ' +
+            getApiErrorMessage(error, 'Lỗi tải dữ liệu.'),
+          'warning'
+        );
+      }
     }
   }
 
@@ -160,9 +181,12 @@ export default function App() {
     try {
       await authApi.logout();
     } catch (error) {
-      if (error?.response?.status !== 401) {
-        addToast(getApiErrorMessage(error, 'Không thể thông báo đăng xuất đến máy chủ.'), 'warning');
+      if (error?.response?.status === 401) {
+        handleSessionExpired();
+      } else {
+        addToast(getApiErrorMessage(error, 'Không thể xác nhận đăng xuất từ máy chủ.'), 'danger');
       }
+      return;
     }
     setUser(null);
     setData(emptyData);

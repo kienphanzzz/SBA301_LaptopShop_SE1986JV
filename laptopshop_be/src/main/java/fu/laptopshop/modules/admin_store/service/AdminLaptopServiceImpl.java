@@ -17,7 +17,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -64,7 +63,7 @@ public class AdminLaptopServiceImpl implements AdminLaptopService {
                 .brand(brand)
                 .category(category)
                 .price(request.getPrice())
-                .oldPrice(request.getOldPrice() != null ? request.getOldPrice() : BigDecimal.ZERO)
+                .oldPrice(request.getOldPrice())
                 .stockQuantity(request.getStockQuantity())
                 .status(request.getStatus())
                 .image(request.getImage() != null && !request.getImage().isBlank() ? request.getImage().trim() : "/assets/laptop-silver.svg")
@@ -98,7 +97,7 @@ public class AdminLaptopServiceImpl implements AdminLaptopService {
         laptop.setBrand(brand);
         laptop.setCategory(category);
         laptop.setPrice(request.getPrice());
-        laptop.setOldPrice(request.getOldPrice() != null ? request.getOldPrice() : BigDecimal.ZERO);
+        laptop.setOldPrice(request.getOldPrice());
         laptop.setStockQuantity(request.getStockQuantity());
         laptop.setStatus(request.getStatus());
         if (request.getImage() != null && !request.getImage().isBlank()) {

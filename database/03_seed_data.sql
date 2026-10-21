@@ -145,13 +145,6 @@ WHERE NOT EXISTS (
     SELECT 1 FROM dbo.users u WHERE u.id = v.id OR u.email = v.email
 );
 
-UPDATE dbo.users
-SET password_hash = '$2a$10$tqmuJAw6/imDGf5oHloQqOKTlp4x/wqtgeRtg96KnNP3DObb2I8TS'
-WHERE (email = 'khach@laptophub.demo'
-       AND password_hash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy')
-   OR (email = 'admin@laptophub.demo'
-       AND password_hash = '$2a$10$Dow1z0y2B8E6x3q7K9v5mO8pR4tW1uY6iA3sD5fG7hJ9kL2zX4cV6');
-
 SET IDENTITY_INSERT dbo.users OFF;
 PRINT N'Đã kiểm tra / thêm dữ liệu mẫu cho bảng [dbo].[users].';
 GO
