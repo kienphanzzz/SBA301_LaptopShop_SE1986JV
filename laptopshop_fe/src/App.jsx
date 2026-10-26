@@ -141,6 +141,16 @@ export default function App() {
     };
   }, [refreshAdminData, refreshCustomerData]);
 
+  useEffect(() => {
+    function onAuthExpired() {
+      handleSessionExpired();
+    }
+    window.addEventListener("auth-session-expired", onAuthExpired);
+    return () => {
+      window.removeEventListener("auth-session-expired", onAuthExpired);
+    };
+  }, []);
+
   async function handleLoginSuccess(profile) {
     setUser(profile);
     addToast('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');

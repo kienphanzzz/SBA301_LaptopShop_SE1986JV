@@ -15,6 +15,7 @@ export const axiosClient = axios.create({
 
 let cachedCsrfToken = null;
 let csrfPromise = null;
+let refreshPromise = null;
 
 function readCsrfCookie() {
   if (typeof document === 'undefined' || !document.cookie) return null;
@@ -81,14 +82,15 @@ axiosClient.interceptors.response.use(
     const originalConfig = error.config;
     const status = error.response?.status;
     const method = (originalConfig?.method || 'get').toLowerCase();
+    const url = originalConfig?.url || '';
 
-    // Nếu CSRF token bị xoay vòng sau khi login/logout, tự động làm mới 1 lần
+    // 1. Xử lý CSRF token xoay vòng (403)
     if (
       status === 403 &&
       originalConfig &&
       !originalConfig._csrfRetried &&
       ['post', 'put', 'patch', 'delete'].includes(method) &&
-      !String(originalConfig.url || '').includes('/auth/login')
+      !url.includes('/auth/login')
     ) {
       originalConfig._csrfRetried = true;
       const freshToken = await ensureCsrfToken(true);
@@ -96,6 +98,44 @@ axiosClient.interceptors.response.use(
         originalConfig.headers = originalConfig.headers || {};
         originalConfig.headers['X-XSRF-TOKEN'] = freshToken;
         return axiosClient(originalConfig);
+      }
+    }
+
+    // 2. Xử lý Token hết hạn (401 Unauthorized) -> Tự động gọi Refresh Token (Task 6)
+    const isAuthAction = /\/auth\/(login|register|refresh|logout)$/.test(url);
+    if (status === 401 && originalConfig && !originalConfig._retried && !isAuthAction) {
+      originalConfig._retried = true;
+
+      // Chia sẻ 1 promise duy nhất cho các request đồng thời bị 401 (ngăn race condition)
+      if (!refreshPromise) {
+        refreshPromise = (async () => {
+          const csrf = await ensureCsrfToken(false);
+          return axios.post(
+            `${BASE_URL}/auth/refresh`,
+            {},
+            {
+              withCredentials: true,
+              headers: {
+                'Content-Type': 'application/json',
+                ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
+              },
+            }
+          );
+        })();
+      }
+
+      try {
+        await refreshPromise;
+        // Refresh thành công -> Thực hiện lại request ban đầu với cookie mới
+        return axiosClient(originalConfig);
+      } catch (refreshError) {
+        // Refresh thất bại (hết hạn hoặc revoked) -> Thông báo phiên đăng nhập kết thúc
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('auth-session-expired'));
+        }
+        return Promise.reject(refreshError);
+      } finally {
+        refreshPromise = null;
       }
     }
 

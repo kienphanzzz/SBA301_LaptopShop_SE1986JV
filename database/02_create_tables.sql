@@ -1,4 +1,4 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    FILE: 02_create_tables.sql
    PROJECT: Laptop Shop Management System (SBA301 - 18 Use Cases)
    TARGET DATABASE: LaptopShopDB (SQL Server)
@@ -303,5 +303,29 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_orders_user_status_da
 BEGIN
     CREATE INDEX IX_orders_user_status_date
         ON dbo.orders (user_id, status, order_date DESC);
+END
+GO
+
+/* ==========================================================================
+   9. BẢNG REFRESH TOKENS (Task 6 - Refresh Token)
+   ========================================================================== */
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'refresh_tokens' AND schema_id = SCHEMA_ID(N'dbo'))
+BEGIN
+    CREATE TABLE dbo.refresh_tokens (
+        id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        token_hash VARCHAR(64) NOT NULL UNIQUE,
+        user_id BIGINT NOT NULL,
+        created_at DATETIMEOFFSET(7) NOT NULL,
+        expires_at DATETIMEOFFSET(7) NOT NULL,
+        revoked_at DATETIMEOFFSET(7) NULL,
+        CONSTRAINT FK_refresh_tokens_users FOREIGN KEY (user_id)
+            REFERENCES dbo.users (id) ON DELETE CASCADE
+    );
+    CREATE NONCLUSTERED INDEX idx_refresh_tokens_user_id ON dbo.refresh_tokens(user_id);
+    PRINT N'Đã tạo bảng [dbo].[refresh_tokens].';
+END
+ELSE
+BEGIN
+    PRINT N'Bảng [dbo].[refresh_tokens] đã tồn tại. Bỏ qua.';
 END
 GO

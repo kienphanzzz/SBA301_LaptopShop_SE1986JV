@@ -22,6 +22,12 @@ export const authApi = {
     return response.data;
   },
 
+  async refresh() {
+    await ensureCsrfToken(false);
+    const response = await axiosClient.post('/auth/refresh');
+    return response.data;
+  },
+
   async getProfile() {
     const response = await axiosClient.get('/profile');
     return response.data;
