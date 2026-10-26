@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Container, Button, Spinner } from 'react-bootstrap';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Button, Container, Spinner } from 'react-bootstrap';
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { initialData } from './data/seed';
 import { authApi } from './api/authApi';
+import { adminApi } from './api/adminApi';
+import { shoppingApi } from './api/shoppingApi';
+import { getApiErrorMessage } from './api/catalogApi';
 import SiteLayout from './components/SiteLayout';
 import NotFound from './components/NotFound';
 import Catalog from './pages/Catalog';
@@ -13,12 +15,15 @@ import { MyOrders, MyOrderDetails } from './pages/MyOrders';
 import AdminLayout from './admin/AdminLayout';
 import { AdminDashboard, AdminProducts, AdminTaxonomy, AdminInventory, AdminOrders, AdminOrderDetails, AdminReports } from './admin/Pages';
 
-// Dữ liệu tạm trên localStorage chỉ phục vụ UC-07 đến UC-18 (Wishlist, Cart, Orders, Admin demo).
-// UC-01 đến UC-06 sử dụng API thật và phiên xác thực từ Spring Boot + SQL Server.
-function readDemoData() {
-  try { return JSON.parse(localStorage.getItem('laptopshop_demo_data')) || initialData; }
-  catch { return initialData; }
-}
+const emptyData = {
+  products: [],
+  brands: [],
+  categories: [],
+  cart: {},
+  wishlist: {},
+  wishlistProducts: {},
+  orders: [],
+};
 
 function OnlyRole({ user, authChecking, role, children }) {
   if (authChecking) {
@@ -44,35 +49,89 @@ function OnlyRole({ user, authChecking, role, children }) {
 }
 
 export default function App() {
-  const [data, setData] = useState(readDemoData);
+  const [data, setData] = useState(emptyData);
   const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [toasts, setToasts] = useState([]);
   const navigate = useNavigate();
-
   const customerId = user?.role === 'CUSTOMER' ? String(user.id) : '';
   const cart = data.cart[customerId] || [];
   const wishIds = data.wishlist[customerId] || [];
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
-  useEffect(() => {
-    localStorage.setItem('laptopshop_demo_data', JSON.stringify(data));
-  }, [data]);
+  function addToast(text, variant = 'success') {
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, text, variant }]);
+  }
 
-  // Xóa triệt để key giả lập phiên đăng nhập cũ trên localStorage (nếu có) và xác thực trực tiếp với Backend
+  function removeToast(id) {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }
+
+  function handleApiError(error, defaultMessage) {
+    if (error?.response?.status === 401) {
+      handleSessionExpired();
+      return;
+    }
+    addToast(getApiErrorMessage(error, defaultMessage), 'danger');
+  }
+
+  const refreshCustomerData = useCallback(async (profileId) => {
+    const [cartItems, wishlistItems, orders] = await Promise.all([
+      shoppingApi.getCart(),
+      shoppingApi.getWishlist(),
+      shoppingApi.getMyOrders(),
+    ]);
+    const id = String(profileId);
+    setData((previous) => ({
+      ...previous,
+      cart: { ...previous.cart, [id]: cartItems },
+      wishlist: { ...previous.wishlist, [id]: wishlistItems.map((item) => item.laptopId) },
+      wishlistProducts: { ...previous.wishlistProducts, [id]: wishlistItems },
+      orders,
+    }));
+  }, []);
+
+  const refreshAdminData = useCallback(async () => {
+    const [products, brands, categories, orders] = await Promise.all([
+      adminApi.getLaptops(),
+      adminApi.getTaxonomy('brands'),
+      adminApi.getTaxonomy('categories'),
+      adminApi.getOrders(),
+    ]);
+    setData((previous) => ({ ...previous, products, brands, categories, orders }));
+  }, []);
+
   useEffect(() => {
-    localStorage.removeItem('laptopshop_demo_session');
     let active = true;
-    authApi
-      .getProfile()
+    authApi.getProfile()
       .then((profile) => {
         if (!active) return;
         setUser(profile);
-        syncUserToLocalData(profile);
+        const refreshData = profile.role === 'ADMIN'
+          ? refreshAdminData()
+          : refreshCustomerData(profile.id);
+        refreshData.catch((error) => {
+          if (!active) return;
+          if (error?.response?.status === 401) {
+            handleSessionExpired();
+            return;
+          }
+          addToast(
+            'Phiên đăng nhập hợp lệ nhưng không thể tải dữ liệu tài khoản: ' +
+              getApiErrorMessage(error, 'Lỗi tải dữ liệu.'),
+            'warning'
+          );
+        });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
         setUser(null);
+        if (error?.response && error.response.status !== 401) {
+          addToast(getApiErrorMessage(error, 'Không thể kiểm tra phiên đăng nhập.'), 'danger');
+        } else if (!error?.response && error?.request) {
+          addToast(getApiErrorMessage(error, 'Không thể kết nối đến máy chủ.'), 'warning');
+        }
       })
       .finally(() => {
         if (active) setAuthChecking(false);
@@ -80,244 +139,220 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshAdminData, refreshCustomerData]);
 
-  function addToast(text, variant = 'success') {
-    const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, text, variant }]);
-  }
-  function removeToast(id) { setToasts((prev) => prev.filter((t) => t.id !== id)); }
-  function showNotice(text, variant = 'success') { addToast(text, variant); }
-
-  function syncUserToLocalData(profile) {
-    if (!profile || !profile.id) return;
-    const summary = {
-      id: Number(profile.id),
-      fullName: profile.fullName,
-      email: profile.email,
-      phone: profile.phone || '',
-      address: profile.address || '',
-      role: profile.role,
-      status: profile.status,
-    };
-    setData((prev) => {
-      const exists = prev.users.some((u) => Number(u.id) === summary.id);
-      return {
-        ...prev,
-        users: exists
-          ? prev.users.map((u) => (Number(u.id) === summary.id ? { ...u, ...summary } : u))
-          : [...prev.users, summary],
-      };
-    });
-  }
-
-  function handleLoginSuccess(profile) {
+  async function handleLoginSuccess(profile) {
     setUser(profile);
-    syncUserToLocalData(profile);
-    showNotice('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');
+    addToast('Đăng nhập thành công. Xin chào ' + profile.fullName + '!');
     navigate(profile.role === 'ADMIN' ? '/admin' : '/');
+    try {
+      if (profile.role === 'ADMIN') await refreshAdminData();
+      else await refreshCustomerData(profile.id);
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        handleSessionExpired();
+      } else {
+        addToast(
+          'Đăng nhập thành công nhưng không thể tải dữ liệu tài khoản: ' +
+            getApiErrorMessage(error, 'Lỗi tải dữ liệu.'),
+          'warning'
+        );
+      }
+    }
   }
 
   function handleRegisterSuccess() {
-    showNotice('Đăng ký tài khoản thành công. Vui lòng đăng nhập.');
+    addToast('Đăng ký tài khoản thành công. Vui lòng đăng nhập.');
   }
 
   function handleProfileUpdated(updatedProfile, showToast = true) {
     setUser(updatedProfile);
-    syncUserToLocalData(updatedProfile);
-    if (showToast) {
-      showNotice('Đã cập nhật hồ sơ cá nhân.');
-    }
+    if (showToast) addToast('Đã cập nhật hồ sơ cá nhân.');
   }
 
   function handleSessionExpired() {
     setUser(null);
-    showNotice('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'warning');
+    setData(emptyData);
+    addToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'warning');
     navigate('/login', { replace: true });
   }
 
   async function logout() {
     try {
       await authApi.logout();
-    } catch {
-      // Vẫn xóa state phía client nếu session trên server đã hết hạn trước đó
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        handleSessionExpired();
+      } else {
+        addToast(getApiErrorMessage(error, 'Không thể xác nhận đăng xuất từ máy chủ.'), 'danger');
+      }
+      return;
     }
     setUser(null);
-    showNotice('Đã đăng xuất thành công.', 'info');
+    setData(emptyData);
+    addToast('Đã đăng xuất.', 'info');
     navigate('/');
   }
 
   function needCustomer() {
-    if (user?.role !== 'CUSTOMER') { showNotice('Đăng nhập Customer để thực hiện chức năng này.', 'warning'); navigate('/login'); return false; }
+    if (user?.role !== 'CUSTOMER') {
+      addToast('Đăng nhập Customer để thực hiện chức năng này.', 'warning');
+      navigate('/login');
+      return false;
+    }
     return true;
   }
-  function syncApiProductList(products, apiProduct) {
-    if (!apiProduct || !apiProduct.id) return products;
-    const targetId = Number(apiProduct.id);
-    const normalized = {
-      id: targetId,
-      sku: apiProduct.sku,
-      name: apiProduct.name,
-      brandId: Number(apiProduct.brandId),
-      brandName: apiProduct.brandName,
-      categoryId: Number(apiProduct.categoryId),
-      categoryName: apiProduct.categoryName,
-      price: Number(apiProduct.price),
-      oldPrice: apiProduct.oldPrice != null ? Number(apiProduct.oldPrice) : null,
-      stockQuantity: Number(apiProduct.stockQuantity),
-      status: apiProduct.status || 'ACTIVE',
-      image: apiProduct.image || '/assets/laptop-silver.svg',
-      description: apiProduct.description || '',
-      specs: apiProduct.specs || '',
-    };
-    const exists = products.some((item) => Number(item.id) === targetId);
-    return exists
-      ? products.map((item) => (Number(item.id) === targetId ? { ...item, ...normalized } : item))
-      : [...products, normalized];
+
+  async function refreshShopping() {
+    if (user?.role === 'CUSTOMER') await refreshCustomerData(user.id);
   }
-  function toggleWish(laptopId, apiProduct) {
+
+  async function toggleWish(laptopId) {
     if (!needCustomer()) return;
-    const targetId = Number(laptopId);
-    const alreadyWished = (data.wishlist[customerId] || []).includes(targetId);
-    setData((prev) => {
-      const oldIds = prev.wishlist[customerId] || [];
-      const newIds = oldIds.includes(targetId)
-        ? oldIds.filter((id) => Number(id) !== targetId)
-        : [...oldIds, targetId];
-      return {
-        ...prev,
-        products: syncApiProductList(prev.products, apiProduct),
-        wishlist: { ...prev.wishlist, [customerId]: newIds },
-      };
-    });
-    showNotice(alreadyWished ? 'Đã bỏ sản phẩm khỏi wishlist.' : 'Đã thêm vào wishlist.');
-  }
-  function addCart(laptopId, quantity, apiProduct) {
-    if (!needCustomer()) return;
-    const targetId = Number(laptopId);
-    const product = apiProduct || data.products.find((item) => Number(item.id) === targetId);
-    const existing = cart.find((item) => Number(item.laptopId) === targetId);
-    if (!product || product.status !== 'ACTIVE' || Number(product.stockQuantity) === 0) { showNotice('Sản phẩm không thể đặt mua.', 'warning'); return; }
-    const newQuantity = (existing?.quantity || 0) + Number(quantity);
-    if (newQuantity < 1 || newQuantity > Number(product.stockQuantity)) { showNotice('Số lượng vượt tồn kho hiện có.', 'danger'); return; }
-    setData((prev) => {
-      const prevCart = prev.cart[customerId] || [];
-      const prevExisting = prevCart.find((item) => Number(item.laptopId) === targetId);
-      const nextQty = (prevExisting?.quantity || 0) + Number(quantity);
-      const newCart = prevExisting
-        ? prevCart.map((item) => (Number(item.laptopId) === targetId ? { ...item, quantity: nextQty } : item))
-        : [...prevCart, { laptopId: targetId, quantity: nextQty }];
-      return {
-        ...prev,
-        products: syncApiProductList(prev.products, apiProduct),
-        cart: { ...prev.cart, [customerId]: newCart },
-      };
-    });
-    showNotice('Đã thêm sản phẩm vào giỏ hàng.');
-  }
-  function changeCartQuantity(laptopId, quantity) {
-    const product = data.products.find((item) => item.id === laptopId);
-    if (!product || product.status !== 'ACTIVE' || quantity < 1 || quantity > product.stockQuantity) { showNotice('Số lượng phải từ 1 đến số lượng còn trong kho.', 'danger'); return; }
-    setData((prev) => ({ ...prev, cart: { ...prev.cart, [customerId]: cart.map((item) => item.laptopId === laptopId ? { ...item, quantity } : item) } }));
-  }
-  function removeCart(laptopId) {
-    setData((prev) => ({ ...prev, cart: { ...prev.cart, [customerId]: cart.filter((item) => item.laptopId !== laptopId) } }));
-    showNotice('Đã xóa sản phẩm khỏi giỏ.');
-  }
-  function placeOrder(form) {
-    if (!user || user.role !== 'CUSTOMER' || cart.length === 0) return { error: 'Giỏ hàng không hợp lệ.' };
-    const items = [];
-    for (const line of cart) {
-      const product = data.products.find((item) => item.id === line.laptopId);
-      if (!product || product.status !== 'ACTIVE' || line.quantity > product.stockQuantity) return { error: 'Một sản phẩm đã hết hàng hoặc không đủ tồn kho. Vui lòng kiểm tra giỏ hàng.' };
-      items.push({ laptopId: product.id, productName: product.name, unitPrice: product.price, quantity: line.quantity });
+    try {
+      const response = await shoppingApi.toggleWishlist(Number(laptopId));
+      await refreshShopping();
+      addToast(response.message || (response.added ? 'Đã thêm vào wishlist.' : 'Đã bỏ sản phẩm khỏi wishlist.'));
+    } catch (error) {
+      handleApiError(error, 'Không thể cập nhật danh sách yêu thích.');
     }
-    const id = Math.max(...data.orders.map((item) => item.id), 1000) + 1;
-    const order = { id, userId: user.id, orderDate: new Date().toISOString().slice(0, 10), receiverName: form.receiverName.trim(), phone: form.phone.trim(), address: form.address.trim(), paymentMethod: 'COD', status: 'PENDING', items, totalAmount: items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0) };
-    setData((prev) => ({ ...prev,
-      orders: [order, ...prev.orders],
-      products: prev.products.map((product) => {
-        const item = items.find((line) => line.laptopId === product.id);
-        return item ? { ...product, stockQuantity: product.stockQuantity - item.quantity } : product;
-      }),
-      cart: { ...prev.cart, [customerId]: [] },
-    }));
-    showNotice('Đặt hàng thành công. Mã đơn #' + id);
-    return { id };
   }
-  function cancelOrder(orderId) {
-    const order = data.orders.find((item) => item.id === Number(orderId) && item.userId === user?.id);
-    if (!order || order.status !== 'PENDING') { showNotice('Chỉ được hủy đơn PENDING của bạn.', 'danger'); return; }
-    setData((prev) => ({ ...prev,
-      orders: prev.orders.map((item) => item.id === order.id ? { ...item, status: 'CANCELLED' } : item),
-      products: prev.products.map((product) => {
-        const line = order.items.find((item) => item.laptopId === product.id);
-        return line ? { ...product, stockQuantity: product.stockQuantity + line.quantity } : product;
-      }),
-    }));
-    showNotice('Đã hủy đơn, số lượng hàng được hoàn về kho.');
+
+  async function addCart(laptopId, quantity) {
+    if (!needCustomer()) return;
+    try {
+      await shoppingApi.addToCart(Number(laptopId), Number(quantity));
+      await refreshShopping();
+      addToast('Đã thêm sản phẩm vào giỏ hàng.');
+    } catch (error) {
+      handleApiError(error, 'Không thể thêm sản phẩm vào giỏ hàng.');
+    }
   }
-  function confirmReceipt(orderId) {
-    const order = data.orders.find((item) => item.id === Number(orderId) && item.userId === user?.id);
-    if (!order || order.status !== 'SHIPPING') { showNotice('Chỉ xác nhận đơn đang giao.', 'danger'); return; }
-    setData((prev) => ({ ...prev, orders: prev.orders.map((item) => item.id === order.id ? { ...item, status: 'COMPLETED' } : item) }));
-    showNotice('Đã xác nhận nhận hàng.');
+
+  async function changeCartQuantity(laptopId, quantity) {
+    try {
+      await shoppingApi.updateCartQuantity(Number(laptopId), Number(quantity));
+      await refreshShopping();
+    } catch (error) {
+      handleApiError(error, 'Không thể cập nhật số lượng trong giỏ hàng.');
+    }
   }
-  function saveProduct(form, id) {
-    const sku = form.sku.trim().toUpperCase();
-    const duplicate = data.products.some((item) => item.sku.toUpperCase() === sku && item.id !== id);
-    if (duplicate) return 'SKU đã tồn tại.';
-    if (!form.name.trim() || !sku || Number(form.price) <= 0 || Number(form.stockQuantity) < 0) return 'Vui lòng nhập tên, SKU, giá > 0 và tồn kho >= 0.';
-    const newId = id || Math.max(...data.products.map((item) => item.id), 0) + 1;
-    const product = { id: newId, sku, name: form.name.trim(), brandId: Number(form.brandId), categoryId: Number(form.categoryId), price: Number(form.price), oldPrice: Number(form.oldPrice) || 0, stockQuantity: Number(form.stockQuantity), status: form.status, image: form.image || '/assets/laptop-silver.svg', description: form.description.trim(), specs: form.specs.trim() };
-    setData((prev) => ({ ...prev, products: id ? prev.products.map((item) => item.id === id ? product : item) : [...prev.products, product] }));
-    showNotice(id ? 'Đã cập nhật laptop.' : 'Đã thêm laptop mới.');
-    return '';
+
+  async function removeCart(laptopId) {
+    try {
+      await shoppingApi.removeFromCart(Number(laptopId));
+      await refreshShopping();
+      addToast('Đã xóa sản phẩm khỏi giỏ.');
+    } catch (error) {
+      handleApiError(error, 'Không thể xóa sản phẩm khỏi giỏ hàng.');
+    }
   }
-  function saveTaxonomy(key, name, id) {
-    const text = name.trim();
-    if (!text) return 'Vui lòng nhập tên.';
-    if (data[key].some((item) => item.name.toLowerCase() === text.toLowerCase() && item.id !== id)) return 'Tên đã tồn tại.';
-    const newId = id || Math.max(...data[key].map((item) => item.id), 0) + 1;
-    setData((prev) => ({ ...prev, [key]: id ? prev[key].map((item) => item.id === id ? { ...item, name: text } : item) : [...prev[key], { id: newId, name: text, status: 'ACTIVE' }] }));
-    showNotice('Đã lưu ' + (key === 'brands' ? 'thương hiệu.' : 'danh mục.'));
-    return '';
+
+  async function placeOrder(form) {
+    try {
+      const order = await shoppingApi.placeOrder({
+        receiverName: form.receiverName.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+      });
+      await refreshShopping();
+      addToast('Đặt hàng thành công. Mã đơn #' + order.id);
+      return { id: order.id };
+    } catch (error) {
+      if (error?.response?.status === 401) handleApiError(error, 'Vui lòng đăng nhập lại.');
+      return { error: getApiErrorMessage(error, 'Không thể tạo đơn hàng.') };
+    }
   }
-  function updateStock(productId, number) {
-    if (!Number.isInteger(Number(number)) || Number(number) < 0) return 'Tồn kho phải là số nguyên không âm.';
-    setData((prev) => ({ ...prev, products: prev.products.map((item) => item.id === productId ? { ...item, stockQuantity: Number(number) } : item) }));
-    showNotice('Đã cập nhật tồn kho.');
-    return '';
+
+  async function updateMyOrder(orderId, action) {
+    try {
+      const order = action === 'cancel'
+        ? await shoppingApi.cancelOrder(orderId)
+        : await shoppingApi.confirmReceived(orderId);
+      await refreshShopping();
+      addToast(action === 'cancel' ? 'Đã hủy đơn hàng.' : 'Đã xác nhận nhận hàng.');
+      return order;
+    } catch (error) {
+      handleApiError(error, 'Không thể cập nhật đơn hàng.');
+      return null;
+    }
   }
-  function advanceOrder(orderId, nextStatus) {
-    const steps = { PENDING: 'CONFIRMED', CONFIRMED: 'PACKING', PACKING: 'SHIPPING' };
-    const order = data.orders.find((item) => item.id === Number(orderId));
-    if (!order || steps[order.status] !== nextStatus) return 'Không thể chuyển trạng thái đơn hàng.';
-    setData((prev) => ({ ...prev, orders: prev.orders.map((item) => item.id === order.id ? { ...item, status: nextStatus } : item) }));
-    showNotice('Đã chuyển trạng thái đơn hàng.');
-    return '';
+
+  async function saveProduct(form, id) {
+    try {
+      await adminApi.saveLaptop({
+        ...form,
+        sku: form.sku.trim().toUpperCase(),
+        name: form.name.trim(),
+        brandId: Number(form.brandId),
+        categoryId: Number(form.categoryId),
+        price: Number(form.price),
+        oldPrice: form.oldPrice ? Number(form.oldPrice) : null,
+        stockQuantity: Number(form.stockQuantity),
+        description: form.description.trim(),
+        specs: form.specs.trim(),
+      }, id);
+      await refreshAdminData();
+      addToast(id ? 'Đã cập nhật laptop.' : 'Đã thêm laptop mới.');
+      return '';
+    } catch (error) {
+      return getApiErrorMessage(error, 'Không thể lưu thông tin laptop.');
+    }
+  }
+
+  async function saveTaxonomy(type, name, id) {
+    try {
+      await adminApi.saveTaxonomy(type, name.trim(), id);
+      await refreshAdminData();
+      addToast('Đã lưu ' + (type === 'brands' ? 'thương hiệu.' : 'danh mục.'));
+      return '';
+    } catch (error) {
+      return getApiErrorMessage(error, 'Không thể lưu dữ liệu danh mục.');
+    }
+  }
+
+  async function updateStock(productId, quantity) {
+    try {
+      await adminApi.updateStock(Number(productId), Number(quantity));
+      await refreshAdminData();
+      addToast('Đã cập nhật tồn kho.');
+      return '';
+    } catch (error) {
+      return getApiErrorMessage(error, 'Không thể cập nhật tồn kho.');
+    }
+  }
+
+  async function advanceOrder(orderId, nextStatus) {
+    try {
+      await adminApi.updateOrderStatus(Number(orderId), nextStatus);
+      await refreshAdminData();
+      addToast('Đã chuyển trạng thái đơn hàng.');
+      return '';
+    } catch (error) {
+      return getApiErrorMessage(error, 'Không thể cập nhật trạng thái đơn hàng.');
+    }
   }
 
   return <Routes>
     <Route element={<SiteLayout user={user} onLogout={logout} cartCount={cartCount} wishCount={wishIds.length} toasts={toasts} onRemoveToast={removeToast} />}>
-      <Route path="/" element={<Catalog data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
-      <Route path="/laptops/:id" element={<ProductDetails data={data} user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
+      <Route path="/" element={<Catalog user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
+      <Route path="/laptops/:id" element={<ProductDetails user={user} wishIds={wishIds} onAddCart={addCart} onToggleWish={toggleWish} />} />
       <Route path="/login" element={<Login user={user} onLoginSuccess={handleLoginSuccess} />} />
       <Route path="/register" element={<Register user={user} onRegisterSuccess={handleRegisterSuccess} />} />
       <Route path="/profile" element={<OnlyRole user={user} authChecking={authChecking} role={['CUSTOMER', 'ADMIN']}><Profile user={user} onProfileUpdated={handleProfileUpdated} onSessionExpired={handleSessionExpired} /></OnlyRole>} />
       <Route path="/wishlist" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Wishlist data={data} wishIds={wishIds} user={user} onToggleWish={toggleWish} onAddCart={addCart} /></OnlyRole>} />
-      <Route path="/cart" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Cart data={data} cart={cart} onQuantity={changeCartQuantity} onRemove={removeCart} /></OnlyRole>} />
-      <Route path="/checkout" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Checkout data={data} cart={cart} user={user} onPlaceOrder={placeOrder} /></OnlyRole>} />
-      <Route path="/orders" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrders data={data} user={user} /></OnlyRole>} />
-      <Route path="/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrderDetails data={data} user={user} onCancel={cancelOrder} onConfirm={confirmReceipt} /></OnlyRole>} />
+      <Route path="/cart" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Cart cart={cart} onQuantity={changeCartQuantity} onRemove={removeCart} /></OnlyRole>} />
+      <Route path="/checkout" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><Checkout cart={cart} user={user} onPlaceOrder={placeOrder} /></OnlyRole>} />
+      <Route path="/orders" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrders data={data} /></OnlyRole>} />
+      <Route path="/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="CUSTOMER"><MyOrderDetails onUpdate={updateMyOrder} /></OnlyRole>} />
       <Route path="/admin" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminDashboard data={data} /></OnlyRole>} />
       <Route path="/admin/laptops" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminProducts data={data} onSave={saveProduct} /></OnlyRole>} />
       <Route path="/admin/brands" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="brands" onSave={saveTaxonomy} /></OnlyRole>} />
       <Route path="/admin/categories" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminTaxonomy data={data} type="categories" onSave={saveTaxonomy} /></OnlyRole>} />
       <Route path="/admin/inventory" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminInventory data={data} onUpdate={updateStock} /></OnlyRole>} />
       <Route path="/admin/orders" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminOrders data={data} /></OnlyRole>} />
-      <Route path="/admin/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminOrderDetails data={data} onAdvance={advanceOrder} /></OnlyRole>} />
-      <Route path="/admin/reports" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminReports data={data} /></OnlyRole>} />
+      <Route path="/admin/orders/:id" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminOrderDetails onAdvance={advanceOrder} /></OnlyRole>} />
+      <Route path="/admin/reports" element={<OnlyRole user={user} authChecking={authChecking} role="ADMIN"><AdminLayout /><AdminReports /></OnlyRole>} />
       <Route path="*" element={<NotFound />} />
     </Route>
   </Routes>;

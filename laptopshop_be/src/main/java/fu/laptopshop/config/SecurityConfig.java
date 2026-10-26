@@ -84,6 +84,12 @@ public class SecurityConfig {
                         // UC-03 & UC-04: Logout và Profile bắt buộc phải có phiên đăng nhập hợp lệ
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers("/api/v1/profile/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        // UC-07 -> UC-12: Wishlist, Cart và Orders dành cho Customer (Admin cũng có thể truy cập nếu cần)
+                        .requestMatchers("/api/v1/wishlist/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers("/api/v1/cart/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        .requestMatchers("/api/v1/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
+                        // UC-13 -> UC-18: Quản trị cửa hàng chỉ dành riêng cho Admin
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 );
 

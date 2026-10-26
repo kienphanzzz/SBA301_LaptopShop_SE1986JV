@@ -42,7 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -575,5 +577,239 @@ class LaptopshopBeApplicationTests {
         assertEquals("User B", userBAfter.getFullName());
         assertEquals("0922222222", userBAfter.getPhone());
         assertNull(userBAfter.getAddress());
+    }
+
+    @Test
+    @Transactional
+    void testUC07WishlistLifecycle() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khach@laptophub.demo",
+                                  "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertNotNull(session);
+
+        // 1. Get wishlist
+        mockMvc.perform(get("/api/v1/wishlist").session(session))
+                .andExpect(status().isOk());
+
+        // 2. Toggle wishlist
+        mockMvc.perform(post("/api/v1/wishlist/1/toggle")
+                        .with(csrf())
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.laptopId").value(1));
+
+        // 3. Get wishlist ids
+        mockMvc.perform(get("/api/v1/wishlist/ids").session(session))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @Transactional
+    void testUC08CartOperations() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khach@laptophub.demo",
+                                  "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertNotNull(session);
+
+        // 1. Add to cart
+        mockMvc.perform(post("/api/v1/cart")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "laptopId": 1,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.laptopId").value(1))
+                .andExpect(jsonPath("$.quantity").value(2));
+
+        // 2. Get cart
+        mockMvc.perform(get("/api/v1/cart").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalQuantity").value(2));
+
+        // 3. Update quantity
+        mockMvc.perform(put("/api/v1/cart/1")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quantity": 3
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(3));
+
+        // 4. Remove from cart
+        mockMvc.perform(delete("/api/v1/cart/1")
+                        .with(csrf())
+                        .session(session))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Transactional
+    void testUC09ToUC12OrderLifecycleAndRestock() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "khach@laptophub.demo",
+                                  "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertNotNull(session);
+
+        Laptop laptop = laptopRepository.findById(1L).orElseThrow();
+        int initialStock = laptop.getStockQuantity();
+
+        // 1. Add item to cart
+        mockMvc.perform(post("/api/v1/cart")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "laptopId": 1,
+                                  "quantity": 2
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        // 2. Place Order COD
+        MvcResult orderResult = mockMvc.perform(post("/api/v1/orders")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "receiverName": "Nguyễn Văn Giang",
+                                  "phone": "0912345678",
+                                  "address": "Số 1 Cầu Giấy, Hà Nội"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andReturn();
+
+        // Verify stock deducted
+        Laptop laptopAfterOrder = laptopRepository.findById(1L).orElseThrow();
+        assertEquals(initialStock - 2, laptopAfterOrder.getStockQuantity());
+
+        // Extract order ID
+        String responseBody = orderResult.getResponse().getContentAsString();
+        long orderId = ((Number) org.springframework.boot.json.JsonParserFactory.getJsonParser().parseMap(responseBody).get("id")).longValue();
+
+        // 3. View my orders
+        mockMvc.perform(get("/api/v1/orders/me").session(session))
+                .andExpect(status().isOk());
+
+        // 4. View order detail
+        mockMvc.perform(get("/api/v1/orders/me/" + orderId).session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(orderId));
+
+        // 5. Cancel PENDING order -> must refund stock
+        mockMvc.perform(post("/api/v1/orders/me/" + orderId + "/cancel")
+                        .with(csrf())
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        // Verify stock refunded
+        Laptop laptopAfterCancel = laptopRepository.findById(1L).orElseThrow();
+        assertEquals(initialStock, laptopAfterCancel.getStockQuantity());
+    }
+
+    @Test
+    @Transactional
+    void testUC13ToUC18AdminStoreManagement() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "admin@laptophub.demo",
+                                  "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
+        assertNotNull(session);
+
+        // 1. Admin gets all laptops
+        mockMvc.perform(get("/api/v1/admin/laptops").session(session))
+                .andExpect(status().isOk());
+
+        // 2. Admin updates stock (UC-15)
+        mockMvc.perform(patch("/api/v1/admin/laptops/1/stock")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "stockQuantity": 25
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockQuantity").value(25));
+
+        // 3. Admin gets all orders (UC-16)
+        mockMvc.perform(get("/api/v1/admin/orders").session(session))
+                .andExpect(status().isOk());
+
+        // 4. Admin advances order status PENDING -> CONFIRMED (UC-17)
+        mockMvc.perform(patch("/api/v1/admin/orders/1001/status")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "CONFIRMED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        // 5. Admin views sales report (UC-18)
+        mockMvc.perform(get("/api/v1/admin/reports/sales")
+                        .param("fromDate", "2026-01-01")
+                        .param("toDate", "2026-12-31")
+                        .session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completedOrderCount").isNumber())
+                .andExpect(jsonPath("$.totalRevenue").isNumber());
     }
 }

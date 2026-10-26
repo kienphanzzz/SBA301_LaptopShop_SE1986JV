@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    FILE: 03_seed_data.sql
    PROJECT: Laptop Shop Management System (SBA301)
    TARGET DATABASE: LaptopShopDB (SQL Server)
@@ -134,11 +134,11 @@ SELECT
     v.id, v.full_name, v.email, v.password_hash, v.phone, v.address, v.role, v.status
 FROM (VALUES
     (1, N'Nguyễn Minh Anh (Demo Customer)', 'khach@laptophub.demo',
-        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+        '$2a$10$tqmuJAw6/imDGf5oHloQqOKTlp4x/wqtgeRtg96KnNP3DObb2I8TS',
         '0912345678', N'Hà Nội (Dữ liệu Demo)', 'CUSTOMER', 'ACTIVE'),
 
     (2, N'Quản trị cửa hàng (Demo Admin)',  'admin@laptophub.demo',
-        '$2a$10$Dow1z0y2B8E6x3q7K9v5mO8pR4tW1uY6iA3sD5fG7hJ9kL2zX4cV6',
+        '$2a$10$tqmuJAw6/imDGf5oHloQqOKTlp4x/wqtgeRtg96KnNP3DObb2I8TS',
         '0987654321', N'Hà Nội (Dữ liệu Demo)', 'ADMIN',    'ACTIVE')
 ) AS v(id, full_name, email, password_hash, phone, address, role, status)
 WHERE NOT EXISTS (

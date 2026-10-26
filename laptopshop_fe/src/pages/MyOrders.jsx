@@ -1,22 +1,43 @@
-import React, { useState } from 'react';
-import { Alert, Button, Container, Modal, Table } from 'react-bootstrap';
+import React, { useEffect, useState } from 'react';
+import { Alert, Button, Container, Modal, Spinner, Table } from 'react-bootstrap';
 import { Link, useParams } from 'react-router-dom';
 import { EmptyState, PageTitle, StatusBadge } from '../components/Ui';
 import { money } from '../data/helpers';
+import { shoppingApi } from '../api/shoppingApi';
+import { getApiErrorMessage } from '../api/catalogApi';
 
-export function MyOrders({ data, user }) {
-  const orders = data.orders.filter((item) => item.userId === user.id).sort((a,b) => b.id - a.id);
+export function MyOrders({ data }) {
+  const orders = data.orders;
   return <Container className="py-4"><PageTitle title="Đơn hàng của tôi" description="Xem các đơn hàng thuộc tài khoản hiện tại."/>
     {!orders.length ? <EmptyState title="Bạn chưa có đơn hàng" to="/"/> : <div className="white-panel table-responsive"><Table hover className="align-middle"><thead><tr><th>Mã đơn</th><th>Ngày đặt</th><th>Thành tiền</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td className="fw-bold">#{order.id}</td><td>{order.orderDate}</td><td>{money(order.totalAmount)}</td><td><StatusBadge status={order.status}/></td><td><Button as={Link} to={'/orders/' + order.id} variant="outline-danger" size="sm">Xem đơn</Button></td></tr>)}</tbody></Table></div>}
   </Container>;
 }
 
-export function MyOrderDetails({ data, user, onCancel, onConfirm }) {
+export function MyOrderDetails({ onUpdate }) {
   const { id } = useParams();
-  const order = data.orders.find((item) => item.id === Number(id) && item.userId === user.id);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [confirm, setConfirm] = useState('');
-  if (!order) return <Container className="py-5"><Alert variant="danger">Không tìm thấy đơn hàng của bạn.</Alert><Link to="/orders">Trở lại danh sách đơn</Link></Container>;
-  function handleAction() { if (confirm === 'cancel') onCancel(order.id); if (confirm === 'receive') onConfirm(order.id); setConfirm(''); }
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    shoppingApi.getMyOrder(id)
+      .then((result) => { if (active) setOrder(result); })
+      .catch((requestError) => {
+        if (active) setError(getApiErrorMessage(requestError, 'Không thể tải chi tiết đơn hàng.'));
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [id]);
+  if (loading) return <Container className="py-5 text-center"><Spinner animation="border" variant="danger" /> <span className="ms-2">Đang tải đơn hàng...</span></Container>;
+  if (!order) return <Container className="py-5"><Alert variant="danger">{error || 'Không tìm thấy đơn hàng của bạn.'}</Alert><Link to="/orders">Trở lại danh sách đơn</Link></Container>;
+  async function handleAction() {
+    const updatedOrder = await onUpdate(order.id, confirm);
+    if (updatedOrder) setOrder(updatedOrder);
+    setConfirm('');
+  }
   return <Container className="py-4"><div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4"><div><div className="eyebrow">ĐƠN HÀNG CỦA TÔI</div><h1 className="section-title">Đơn hàng #{order.id}</h1></div><StatusBadge status={order.status}/></div>
     <div className="white-panel mb-4"><h4>Thông tin đơn hàng</h4><p><b>Ngày đặt:</b> {order.orderDate}</p><p><b>Người nhận:</b> {order.receiverName}</p><p><b>Điện thoại:</b> {order.phone}</p><p><b>Địa chỉ:</b> {order.address}</p><p><b>Thanh toán:</b> {order.paymentMethod}</p></div>
     <div className="white-panel table-responsive"><h4>Sản phẩm đã đặt</h4><Table className="align-middle"><thead><tr><th>Tên laptop tại thời điểm đặt</th><th>Đơn giá</th><th>Số lượng</th><th>Thành tiền</th></tr></thead><tbody>{order.items.map((line, i) => <tr key={i}><td>{line.productName}</td><td>{money(line.unitPrice)}</td><td>{line.quantity}</td><td>{money(line.unitPrice * line.quantity)}</td></tr>)}</tbody></Table><div className="text-end fs-5 fw-bold">Tổng: <span className="text-danger">{money(order.totalAmount)}</span></div></div>

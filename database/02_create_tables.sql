@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    FILE: 02_create_tables.sql
    PROJECT: Laptop Shop Management System (SBA301 - 18 Use Cases)
    TARGET DATABASE: LaptopShopDB (SQL Server)
