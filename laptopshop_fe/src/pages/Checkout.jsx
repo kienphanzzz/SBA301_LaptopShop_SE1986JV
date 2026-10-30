@@ -58,9 +58,9 @@ export function Checkout({ cart, user, onPlaceOrder }) {
   }
 
   const formFields = [
-    { name: 'receiverName', label: 'Họ tên người nhận' },
-    { name: 'phone', label: 'Số điện thoại' },
-    { name: 'address', label: 'Địa chỉ giao hàng' },
+    { name: 'receiverName', label: 'Họ tên người nhận', placeholder: 'Nhập họ và tên người nhận...' },
+    { name: 'phone', label: 'Số điện thoại', placeholder: 'Ví dụ: 0912345678' },
+    { name: 'address', label: 'Địa chỉ giao hàng', placeholder: 'Số nhà, tên đường, phường/xã, quận/huyện...' },
   ];
 
   return (
@@ -85,6 +85,7 @@ export function Checkout({ cart, user, onPlaceOrder }) {
                   </Form.Label>
                   <Form.Control
                     name={field.name}
+                    placeholder={field.placeholder}
                     value={form[field.name]}
                     onChange={handleChange}
                     isInvalid={!!errors[field.name]}
