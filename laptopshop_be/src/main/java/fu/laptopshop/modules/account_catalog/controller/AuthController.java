@@ -88,18 +88,7 @@ public class AuthController {
             @CookieValue(name = "refresh_token", required = false) String rawRefreshToken
     ) {
         RefreshTokenService.RefreshResult result = refreshTokenService.rotateRefreshToken(rawRefreshToken);
-
-        UserProfileResponse profile = UserProfileResponse.builder()
-                .id(result.user().getId())
-                .fullName(result.user().getFullName())
-                .email(result.user().getEmail())
-                .phone(result.user().getPhone())
-                .address(result.user().getAddress())
-                .role(result.user().getRole())
-                .status(result.user().getStatus())
-                .createdAt(result.user().getCreatedAt())
-                .updatedAt(result.user().getUpdatedAt())
-                .build();
+        UserProfileResponse profile = UserProfileResponse.from(result.user());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie(result.newAccessToken()).toString(), refreshCookie(result.newRawRefreshToken()).toString())

@@ -57,7 +57,7 @@ public class AccountServiceImpl implements AccountService {
                 .build();
 
         User savedUser = userRepository.save(newUser);
-        return toProfileResponse(savedUser);
+        return UserProfileResponse.from(savedUser);
     }
 
     @Override
@@ -76,14 +76,14 @@ public class AccountServiceImpl implements AccountService {
             throw new DisabledException("Tài khoản của bạn đang bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ quản trị viên.");
         }
 
-        return toProfileResponse(user);
+        return UserProfileResponse.from(user);
     }
 
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(Long authenticatedUserId) {
         User user = getActiveAuthenticatedUser(authenticatedUserId);
-        return toProfileResponse(user);
+        return UserProfileResponse.from(user);
     }
 
     @Override
@@ -104,7 +104,7 @@ public class AccountServiceImpl implements AccountService {
         user.setAddress((address == null || address.isEmpty()) ? null : address);
 
         User saved = userRepository.save(user);
-        return toProfileResponse(saved);
+        return UserProfileResponse.from(saved);
     }
 
     private User getActiveAuthenticatedUser(Long authenticatedUserId) {
@@ -117,19 +117,5 @@ public class AccountServiceImpl implements AccountService {
             throw new DisabledException("Tài khoản của bạn đang bị khóa hoặc ngừng hoạt động.");
         }
         return user;
-    }
-
-    private UserProfileResponse toProfileResponse(User user) {
-        return UserProfileResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .address(user.getAddress())
-                .role(user.getRole())
-                .status(user.getStatus())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .build();
     }
 }
