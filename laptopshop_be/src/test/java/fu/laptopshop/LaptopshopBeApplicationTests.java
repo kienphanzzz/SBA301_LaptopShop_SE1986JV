@@ -668,7 +668,32 @@ class LaptopshopBeApplicationTests {
         Cookie[] cookiesA = loginA.getResponse().getCookies();
         assertTrue(cookiesA.length > 0);
 
-        // 4. User A updates profile and attempts to tamper with id, email, role, status
+        // 4. User A reads profile while authenticated (GET /api/v1/profile)
+        mockMvc.perform(get("/api/v1/profile")
+                        .cookie(cookiesA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("User A"))
+                .andExpect(jsonPath("$.email").value("usera@laptophub.vn"))
+                .andExpect(jsonPath("$.phone").value("0911111111"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+
+        // 5. Validation errors on PUT /api/v1/profile: empty fullName, invalid phone format
+        mockMvc.perform(put("/api/v1/profile")
+                        .with(csrf())
+                        .cookie(cookiesA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "",
+                                  "phone": "12345",
+                                  "address": "Hà Nội"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists())
+                .andExpect(jsonPath("$.fieldErrors.phone").exists());
+
+        // 6. User A updates profile and attempts to tamper with id, email, role, status
         mockMvc.perform(put("/api/v1/profile")
                         .with(csrf())
                         .cookie(cookiesA)
@@ -692,7 +717,17 @@ class LaptopshopBeApplicationTests {
                 .andExpect(jsonPath("$.role").value("CUSTOMER"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
 
-        // 5. Verify User B was NOT modified at all
+        // 7. Verify GET /api/v1/profile returns updated data
+        mockMvc.perform(get("/api/v1/profile")
+                        .cookie(cookiesA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("User A Đã Cập Nhật"))
+                .andExpect(jsonPath("$.phone").value("0933445566"))
+                .andExpect(jsonPath("$.address").value("123 Nguyễn Văn Cừ, Quận 5, TP.HCM"))
+                .andExpect(jsonPath("$.email").value("usera@laptophub.vn"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+
+        // 8. Verify User B was NOT modified at all
         User userBAfter = userRepository.findById(userBBefore.getId()).orElseThrow();
         assertEquals("User B", userBAfter.getFullName());
         assertEquals("0922222222", userBAfter.getPhone());
