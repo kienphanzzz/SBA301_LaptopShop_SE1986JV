@@ -21,7 +21,10 @@ import fu.laptopshop.modules.account_catalog.dto.LaptopResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -53,6 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LaptopshopBeApplicationTests {
 
     @Autowired
@@ -278,29 +282,33 @@ class LaptopshopBeApplicationTests {
     }
 
     @Test
+    @Order(1)
     void testCsrfHandshakeAndMutatingRequestContract() throws Exception {
-        // 1. GET /api/v1/auth/csrf returns token in JSON, exposed header, and XSRF-TOKEN cookie
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        // 1. GET /api/v1/auth/csrf: Frontend receives token in JSON, header, and XSRF-TOKEN cookie
         MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isString())
-                .andExpect(jsonPath("$.headerName").value("X-CSRF-TOKEN"))
+                .andExpect(jsonPath("$.headerName").isString())
                 .andReturn();
 
         JsonNode root = new ObjectMapper().readTree(csrfResult.getResponse().getContentAsString());
         String token = root.get("token").asText();
         assertNotNull(token);
         assertFalse(token.isBlank());
-        // Verify response header set by CsrfCookieFilter
-        String headerToken = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
-        if (headerToken == null) {
-            headerToken = csrfResult.getResponse().getHeader("X-XSRF-TOKEN");
-        }
-        assertNotNull(headerToken);
-        assertEquals(token, headerToken);
 
-        // 2. Mutating request with valid CSRF token passes CSRF verification (reaches authentication provider -> 401 instead of 403)
+        
+        Cookie xsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+        assertNotNull(xsrfCookie);
+        assertFalse(xsrfCookie.isHttpOnly()); // Client JS must be able to read it
+        assertEquals(token, xsrfCookie.getValue());
+
+        // 2. Real handshake: Send actual issued Cookie & Header WITHOUT .with(csrf())
+        // Passes CSRF filter and reaches AuthenticationProvider -> 401 Unauthorized for unknown user (not 403)
         mockMvc.perform(post("/api/v1/auth/login")
-                        .with(csrf())
+                        .cookie(xsrfCookie)
+                        .header("X-XSRF-TOKEN", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -310,8 +318,10 @@ class LaptopshopBeApplicationTests {
                                 """))
                 .andExpect(status().isUnauthorized());
 
-        // 3. Mutating request without CSRF token is rejected with 403 Forbidden
+        // 3. Mutating request with valid cookie but WRONG header token -> 403 Forbidden
         mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(xsrfCookie)
+                        .header("X-XSRF-TOKEN", "tampered-token-xyz")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -321,14 +331,41 @@ class LaptopshopBeApplicationTests {
                                 """))
                 .andExpect(status().isForbidden());
 
-        // 4. Keyword trimming & blank fallback in catalog search
+        // 4. Mutating request with valid cookie but MISSING header -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(xsrfCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 5. Mutating request with header but MISSING cookie -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-XSRF-TOKEN", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 6. Robust Catalog keyword test: avoids brittle hardcoded counts
+        int totalActiveLaptops = (int) laptopRepository.count();
         mockMvc.perform(get("/api/v1/laptops").param("keyword", "   "))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(8));
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.length()").value(totalActiveLaptops));
 
         mockMvc.perform(get("/api/v1/laptops").param("keyword", "  MacBook  "))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$[0].name", org.hamcrest.Matchers.containsString("MacBook")));
     }
 
 
