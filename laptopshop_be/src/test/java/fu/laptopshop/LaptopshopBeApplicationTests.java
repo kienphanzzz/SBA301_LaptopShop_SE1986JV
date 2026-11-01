@@ -18,6 +18,8 @@ import fu.laptopshop.modules.account_catalog.controller.TaxonomyController;
 import fu.laptopshop.modules.account_catalog.dto.BrandResponse;
 import fu.laptopshop.modules.account_catalog.dto.CategoryResponse;
 import fu.laptopshop.modules.account_catalog.dto.LaptopResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -274,6 +276,61 @@ class LaptopshopBeApplicationTests {
         mockMvc.perform(get("/api/v1/profile"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void testCsrfHandshakeAndMutatingRequestContract() throws Exception {
+        // 1. GET /api/v1/auth/csrf returns token in JSON, exposed header, and XSRF-TOKEN cookie
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isString())
+                .andExpect(jsonPath("$.headerName").value("X-CSRF-TOKEN"))
+                .andReturn();
+
+        JsonNode root = new ObjectMapper().readTree(csrfResult.getResponse().getContentAsString());
+        String token = root.get("token").asText();
+        assertNotNull(token);
+        assertFalse(token.isBlank());
+        // Verify response header set by CsrfCookieFilter
+        String headerToken = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
+        if (headerToken == null) {
+            headerToken = csrfResult.getResponse().getHeader("X-XSRF-TOKEN");
+        }
+        assertNotNull(headerToken);
+        assertEquals(token, headerToken);
+
+        // 2. Mutating request with valid CSRF token passes CSRF verification (reaches authentication provider -> 401 instead of 403)
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        // 3. Mutating request without CSRF token is rejected with 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 4. Keyword trimming & blank fallback in catalog search
+        mockMvc.perform(get("/api/v1/laptops").param("keyword", "   "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(8));
+
+        mockMvc.perform(get("/api/v1/laptops").param("keyword", "  MacBook  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
 
     @Test
     @Transactional
