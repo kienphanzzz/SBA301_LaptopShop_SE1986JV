@@ -3,14 +3,13 @@ import { Alert, Button, Container, Form, Spinner } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/authApi';
 import { isValidEmail } from '../../data/helpers';
-import { EyeIcon } from './EyeIcon';
+import { PasswordField } from './PasswordField';
 
 export function Login({ user, onLoginSuccess }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState(location.state?.registeredEmail || '');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [infoBanner, setInfoBanner] = useState(location.state?.registeredMessage || '');
@@ -114,40 +113,20 @@ export function Login({ user, onLoginSuccess }) {
                 )}
               </Form.Group>
 
-              <Form.Group className="auth-form-group" controlId="loginPassword">
-                <Form.Label className="auth-label">
-                  Mật khẩu <span className="required">*</span>
-                </Form.Label>
-                <div className="auth-password-wrap">
-                  <Form.Control
-                    type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    autoComplete="current-password"
-                    placeholder="Nhập mật khẩu"
-                    value={password}
-                    disabled={submitting}
-                    isInvalid={!!fieldErrors.password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
-                    }}
-                    className="auth-input auth-input-password"
-                  />
-                  <button
-                    type="button"
-                    className="auth-password-toggle"
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                    tabIndex={-1}
-                  >
-                    <EyeIcon visible={showPassword} />
-                    <span>{showPassword ? 'Ẩn' : 'Hiện'}</span>
-                  </button>
-                </div>
-                {fieldErrors.password && (
-                  <div className="auth-field-error">{fieldErrors.password}</div>
-                )}
-              </Form.Group>
+              <PasswordField
+                controlId="loginPassword"
+                label="Mật khẩu"
+                name="password"
+                autoComplete="current-password"
+                placeholder="Nhập mật khẩu"
+                value={password}
+                disabled={submitting}
+                error={fieldErrors.password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: '' }));
+                }}
+              />
 
               <Button
                 type="submit"

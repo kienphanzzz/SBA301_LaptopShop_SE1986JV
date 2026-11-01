@@ -3,7 +3,7 @@ import { Alert, Button, Col, Container, Form, Row, Spinner } from 'react-bootstr
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/authApi';
 import { isValidEmail, isValidPhone } from '../../data/helpers';
-import { EyeIcon } from './EyeIcon';
+import { PasswordField } from './PasswordField';
 
 export function Register({ user, onRegisterSuccess }) {
   const navigate = useNavigate();
@@ -14,8 +14,6 @@ export function Register({ user, onRegisterSuccess }) {
     password: '',
     confirmPassword: '',
   });
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -200,71 +198,32 @@ export function Register({ user, onRegisterSuccess }) {
 
               <Row className="g-3">
                 <Col md={6}>
-                  <Form.Group className="auth-form-group" controlId="registerPassword">
-                    <Form.Label className="auth-label">
-                      Mật khẩu <span className="required">*</span>
-                    </Form.Label>
-                    <div className="auth-password-wrap">
-                      <Form.Control
-                        type={showPassword ? 'text' : 'password'}
-                        name="password"
-                        autoComplete="new-password"
-                        placeholder="Tối thiểu 6 ký tự"
-                        value={form.password}
-                        disabled={submitting}
-                        isInvalid={!!fieldErrors.password}
-                        onChange={handleChange}
-                        className="auth-input auth-input-password"
-                      />
-                      <button
-                        type="button"
-                        className="auth-password-toggle"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                        tabIndex={-1}
-                      >
-                        <EyeIcon visible={showPassword} />
-                        <span>{showPassword ? 'Ẩn' : 'Hiện'}</span>
-                      </button>
-                    </div>
-                    {fieldErrors.password && (
-                      <div className="auth-field-error">{fieldErrors.password}</div>
-                    )}
-                  </Form.Group>
+                  <PasswordField
+                    controlId="registerPassword"
+                    label="Mật khẩu"
+                    name="password"
+                    autoComplete="new-password"
+                    placeholder="Tối thiểu 6 ký tự"
+                    value={form.password}
+                    disabled={submitting}
+                    error={fieldErrors.password}
+                    onChange={handleChange}
+                  />
                 </Col>
 
                 <Col md={6}>
-                  <Form.Group className="auth-form-group" controlId="registerConfirmPassword">
-                    <Form.Label className="auth-label">
-                      Xác nhận mật khẩu <span className="required">*</span>
-                    </Form.Label>
-                    <div className="auth-password-wrap">
-                      <Form.Control
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        name="confirmPassword"
-                        autoComplete="new-password"
-                        placeholder="Nhập lại mật khẩu"
-                        value={form.confirmPassword}
-                        disabled={submitting}
-                        isInvalid={!!fieldErrors.confirmPassword}
-                        onChange={handleChange}
-                        className="auth-input auth-input-password"
-                      />
-                      <button
-                        type="button"
-                        className="auth-password-toggle"
-                        onClick={() => setShowConfirmPassword((prev) => !prev)}
-                        aria-label={showConfirmPassword ? 'Ẩn mật khẩu xác nhận' : 'Hiện mật khẩu xác nhận'}
-                        tabIndex={-1}
-                      >
-                        <EyeIcon visible={showConfirmPassword} />
-                        <span>{showConfirmPassword ? 'Ẩn' : 'Hiện'}</span>
-                      </button>
-                    </div>
-                    {fieldErrors.confirmPassword && (
-                      <div className="auth-field-error">{fieldErrors.confirmPassword}</div>
-                    )}
-                  </Form.Group>
+                  <PasswordField
+                    controlId="registerConfirmPassword"
+                    label="Xác nhận mật khẩu"
+                    name="confirmPassword"
+                    autoComplete="new-password"
+                    placeholder="Nhập lại mật khẩu"
+                    value={form.confirmPassword}
+                    disabled={submitting}
+                    error={fieldErrors.confirmPassword}
+                    visibilityLabel="mật khẩu xác nhận"
+                    onChange={handleChange}
+                  />
                 </Col>
               </Row>
 
