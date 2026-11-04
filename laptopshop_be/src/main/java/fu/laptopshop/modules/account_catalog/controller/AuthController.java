@@ -1,4 +1,4 @@
-package fu.laptopshop.modules.account_catalog.controller;
+﻿package fu.laptopshop.modules.account_catalog.controller;
 
 import fu.laptopshop.common.entity.User;
 import fu.laptopshop.common.repository.UserRepository;
@@ -109,11 +109,20 @@ public class AuthController {
                 .body(Map.of("message", "Đăng xuất thành công."));
     }
 
+    /**
+     * Khi COOKIE_SECURE=true (production HTTPS), dung SameSite=None de Cookie
+     * duoc gui cross-domain (FE tren Vercel, BE tren Railway).
+     * Khi local dev (COOKIE_SECURE=false), dung SameSite=Lax.
+     */
+    private String sameSitePolicy() {
+        return cookieSecure ? "None" : "Lax";
+    }
+
     private ResponseCookie accessCookie(String token) {
         return ResponseCookie.from("access_token", token)
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(sameSitePolicy())
                 .path("/")
                 .maxAge(Duration.ofMillis(jwtService.getAccessExpirationMs()))
                 .build();
@@ -123,7 +132,7 @@ public class AuthController {
         return ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(sameSitePolicy())
                 .path("/api/v1/auth")
                 .maxAge(Duration.ofMillis(refreshTokenService.getRefreshExpirationMs()))
                 .build();
@@ -133,7 +142,7 @@ public class AuthController {
         return ResponseCookie.from(name, "")
                 .httpOnly(true)
                 .secure(cookieSecure)
-                .sameSite("Lax")
+                .sameSite(sameSitePolicy())
                 .path(path)
                 .maxAge(Duration.ZERO)
                 .build();
