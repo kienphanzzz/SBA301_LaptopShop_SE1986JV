@@ -44,9 +44,6 @@ public class WishlistServiceImpl implements WishlistService {
     @Override
     @Transactional
     public WishlistToggleResponse toggleWishlist(Long userId, Long laptopId) {
-        Laptop laptop = laptopRepository.findById(laptopId)
-                .orElseThrow(() -> new ResourceNotFoundException("Laptop không tồn tại với mã #" + laptopId));
-
         Optional<WishlistItem> existing = wishlistItemRepository.findByUserIdAndLaptopId(userId, laptopId);
 
         if (existing.isPresent()) {
@@ -57,6 +54,9 @@ public class WishlistServiceImpl implements WishlistService {
                     .message("Đã bỏ sản phẩm khỏi wishlist.")
                     .build();
         }
+
+        Laptop laptop = laptopRepository.findById(laptopId)
+                .orElseThrow(() -> new ResourceNotFoundException("Laptop không tồn tại với mã #" + laptopId));
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Người dùng không tồn tại."));
