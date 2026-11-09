@@ -6,23 +6,14 @@ import fu.laptopshop.common.enums.UserRole;
 import fu.laptopshop.common.exception.DuplicateResourceException;
 import fu.laptopshop.common.exception.ResourceNotFoundException;
 import fu.laptopshop.common.repository.UserRepository;
-import fu.laptopshop.config.CustomUserDetails;
 import fu.laptopshop.modules.account_catalog.dto.LoginRequest;
 import fu.laptopshop.modules.account_catalog.dto.RegisterRequest;
 import fu.laptopshop.modules.account_catalog.dto.UpdateProfileRequest;
 import fu.laptopshop.modules.account_catalog.dto.UserProfileResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
-import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +25,6 @@ public class AccountServiceImpl implements AccountService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final SecurityContextRepository securityContextRepository;
 
     @Override
     @Transactional
@@ -67,16 +57,12 @@ public class AccountServiceImpl implements AccountService {
                 .build();
 
         User savedUser = userRepository.save(newUser);
-        return toProfileResponse(savedUser);
+        return UserProfileResponse.from(savedUser);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserProfileResponse login(
-            LoginRequest request,
-            HttpServletRequest httpRequest,
-            HttpServletResponse httpResponse
-    ) {
+    public UserProfileResponse authenticateAndGetUser(LoginRequest request) {
         String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
 
         User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
@@ -90,42 +76,14 @@ public class AccountServiceImpl implements AccountService {
             throw new DisabledException("Tài khoản của bạn đang bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ quản trị viên.");
         }
 
-        CustomUserDetails principal = new CustomUserDetails(user);
-        UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal,
-                null,
-                principal.getAuthorities()
-        );
-
-        httpRequest.getSession(true);
-        try {
-            httpRequest.changeSessionId();
-        } catch (IllegalStateException ignored) {
-            // MockHttpServletRequest or newly created session without prior ID
-        }
-
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(authentication);
-        SecurityContextHolder.setContext(context);
-        securityContextRepository.saveContext(context, httpRequest, httpResponse);
-
-        return toProfileResponse(user);
-    }
-
-    @Override
-    public void logout(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        SecurityContextLogoutHandler logoutHandler = new SecurityContextLogoutHandler();
-        logoutHandler.setInvalidateHttpSession(true);
-        logoutHandler.setClearAuthentication(true);
-        logoutHandler.logout(httpRequest, httpResponse, authentication);
+        return UserProfileResponse.from(user);
     }
 
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getProfile(Long authenticatedUserId) {
         User user = getActiveAuthenticatedUser(authenticatedUserId);
-        return toProfileResponse(user);
+        return UserProfileResponse.from(user);
     }
 
     @Override
@@ -146,7 +104,7 @@ public class AccountServiceImpl implements AccountService {
         user.setAddress((address == null || address.isEmpty()) ? null : address);
 
         User saved = userRepository.save(user);
-        return toProfileResponse(saved);
+        return UserProfileResponse.from(saved);
     }
 
     private User getActiveAuthenticatedUser(Long authenticatedUserId) {
@@ -159,19 +117,5 @@ public class AccountServiceImpl implements AccountService {
             throw new DisabledException("Tài khoản của bạn đang bị khóa hoặc ngừng hoạt động.");
         }
         return user;
-    }
-
-    private UserProfileResponse toProfileResponse(User user) {
-        return UserProfileResponse.builder()
-                .id(user.getId())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .address(user.getAddress())
-                .role(user.getRole())
-                .status(user.getStatus())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .build();
     }
 }

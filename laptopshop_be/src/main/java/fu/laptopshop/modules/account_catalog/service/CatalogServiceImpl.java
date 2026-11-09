@@ -8,6 +8,7 @@ import fu.laptopshop.common.exception.ResourceNotFoundException;
 import fu.laptopshop.common.repository.BrandRepository;
 import fu.laptopshop.common.repository.CategoryRepository;
 import fu.laptopshop.common.repository.LaptopRepository;
+import fu.laptopshop.common.util.LaptopMapper;
 import fu.laptopshop.modules.account_catalog.dto.BrandResponse;
 import fu.laptopshop.modules.account_catalog.dto.CategoryResponse;
 import fu.laptopshop.modules.account_catalog.dto.LaptopResponse;
@@ -95,7 +96,7 @@ public class CatalogServiceImpl implements CatalogService {
         );
 
         return laptops.stream()
-                .map(this::mapToLaptopResponse)
+                .map(LaptopMapper::toLaptopResponse)
                 .toList();
     }
 
@@ -108,7 +109,7 @@ public class CatalogServiceImpl implements CatalogService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy laptop đang kinh doanh với id = " + id
                 ));
-        return mapToLaptopResponse(laptop);
+        return LaptopMapper.toLaptopResponse(laptop);
     }
 
     @Override
@@ -139,34 +140,11 @@ public class CatalogServiceImpl implements CatalogService {
         };
     }
 
-    private LaptopResponse mapToLaptopResponse(Laptop laptop) {
-        int stock = laptop.getStockQuantity() != null ? laptop.getStockQuantity() : 0;
-        return LaptopResponse.builder()
-                .id(laptop.getId())
-                .sku(laptop.getSku())
-                .name(laptop.getName())
-                .brandId(laptop.getBrand().getId())
-                .brandName(laptop.getBrand().getName())
-                .categoryId(laptop.getCategory().getId())
-                .categoryName(laptop.getCategory().getName())
-                .specs(laptop.getSpecs())
-                .description(cleanDemoPrefix(laptop.getDescription()))
-                .image(laptop.getImage())
-                .price(laptop.getPrice())
-                .oldPrice(laptop.getOldPrice())
-                .stockQuantity(stock)
-                .status(laptop.getStatus())
-                .inStock(stock > 0 && laptop.getStatus() == CommonStatus.ACTIVE)
-                .createdAt(laptop.getCreatedAt())
-                .updatedAt(laptop.getUpdatedAt())
-                .build();
-    }
-
     private BrandResponse mapToBrandResponse(Brand brand) {
         return BrandResponse.builder()
                 .id(brand.getId())
                 .name(brand.getName())
-                .description(cleanDemoPrefix(brand.getDescription()))
+                .description(LaptopMapper.cleanDemoPrefix(brand.getDescription()))
                 .status(brand.getStatus())
                 .build();
     }
@@ -175,15 +153,8 @@ public class CatalogServiceImpl implements CatalogService {
         return CategoryResponse.builder()
                 .id(category.getId())
                 .name(category.getName())
-                .description(cleanDemoPrefix(category.getDescription()))
+                .description(LaptopMapper.cleanDemoPrefix(category.getDescription()))
                 .status(category.getStatus())
                 .build();
-    }
-
-    private String cleanDemoPrefix(String text) {
-        if (text == null) {
-            return null;
-        }
-        return text.replaceFirst("^(?i)\\[DEMO\\]\\s*", "").trim();
     }
 }

@@ -69,7 +69,7 @@ Mở `http://localhost:5173/`. Không mở `index.html` trực tiếp. Vite mặ
 | Customer | `khach@laptophub.demo` | `Password123!` |
 | Admin | `admin@laptophub.demo` | `Password123!` |
 
-Tài khoản demo có sẵn sau khi chạy seed SQL. Script cập nhật hash cũ mặc định của hai tài khoản demo sang BCrypt cho `Password123!`, nhưng không ghi đè mật khẩu đã được người dùng thay đổi. Mật khẩu trong database được lưu dạng BCrypt hash; frontend không tự xác thực và không lưu mật khẩu/session vào `localStorage`.
+Seed SQL tạo tài khoản Customer/Admin với mật khẩu `Password123!` nếu các tài khoản đó chưa tồn tại. Nếu tài khoản đã tồn tại, script không thay đổi mật khẩu; vì vậy mật khẩu có thể vẫn là `123456` hoặc giá trị đã được đặt trước đó. Mật khẩu trong database được lưu dạng BCrypt hash; frontend không tự xác thực và không lưu mật khẩu/session vào `localStorage`.
 
 ## Quy tắc nghiệp vụ chính
 

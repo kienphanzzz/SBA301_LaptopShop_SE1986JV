@@ -1,5 +1,6 @@
 package fu.laptopshop.modules.account_catalog.dto;
 
+import fu.laptopshop.common.entity.User;
 import fu.laptopshop.common.enums.CommonStatus;
 import fu.laptopshop.common.enums.UserRole;
 import lombok.AllArgsConstructor;
@@ -27,4 +28,21 @@ public class UserProfileResponse {
     private CommonStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public static UserProfileResponse from(User user) {
+        if (user == null) {
+            return null;
+        }
+        return UserProfileResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .address(user.getAddress())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
 }

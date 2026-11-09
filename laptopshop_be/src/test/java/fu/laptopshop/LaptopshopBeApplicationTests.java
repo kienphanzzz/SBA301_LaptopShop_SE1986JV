@@ -18,14 +18,18 @@ import fu.laptopshop.modules.account_catalog.controller.TaxonomyController;
 import fu.laptopshop.modules.account_catalog.dto.BrandResponse;
 import fu.laptopshop.modules.account_catalog.dto.CategoryResponse;
 import fu.laptopshop.modules.account_catalog.dto.LaptopResponse;
-import jakarta.servlet.http.HttpSession;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -52,6 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LaptopshopBeApplicationTests {
 
     @Autowired
@@ -277,6 +282,94 @@ class LaptopshopBeApplicationTests {
     }
 
     @Test
+    @Order(1)
+    void testCsrfHandshakeAndMutatingRequestContract() throws Exception {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        // 1. GET /api/v1/auth/csrf: Frontend receives token in JSON, header, and XSRF-TOKEN cookie
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isString())
+                .andExpect(jsonPath("$.headerName").isString())
+                .andReturn();
+
+        JsonNode root = new ObjectMapper().readTree(csrfResult.getResponse().getContentAsString());
+        String token = root.get("token").asText();
+        assertNotNull(token);
+        assertFalse(token.isBlank());
+
+        
+        Cookie xsrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+        assertNotNull(xsrfCookie);
+        assertFalse(xsrfCookie.isHttpOnly()); // Client JS must be able to read it
+        assertEquals(token, xsrfCookie.getValue());
+
+        // 2. Real handshake: Send actual issued Cookie & Header WITHOUT .with(csrf())
+        // Passes CSRF filter and reaches AuthenticationProvider -> 401 Unauthorized for unknown user (not 403)
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(xsrfCookie)
+                        .header("X-XSRF-TOKEN", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+
+        // 3. Mutating request with valid cookie but WRONG header token -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(xsrfCookie)
+                        .header("X-XSRF-TOKEN", "tampered-token-xyz")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 4. Mutating request with valid cookie but MISSING header -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(xsrfCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 5. Mutating request with header but MISSING cookie -> 403 Forbidden
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-XSRF-TOKEN", token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "nonexistent@laptophub.vn",
+                                  "password": "WrongPassword123"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        // 6. Robust Catalog keyword test: avoids brittle hardcoded counts
+        int totalActiveLaptops = (int) laptopRepository.count();
+        mockMvc.perform(get("/api/v1/laptops").param("keyword", "   "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.length()").value(totalActiveLaptops));
+
+        mockMvc.perform(get("/api/v1/laptops").param("keyword", "  MacBook  "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$[0].name", org.hamcrest.Matchers.containsString("MacBook")));
+    }
+
+
+    @Test
     @Transactional
     void testUc01RegisterCustomerValidationAndSecurity() throws Exception {
         String registerPayload = """
@@ -424,24 +517,51 @@ class LaptopshopBeApplicationTests {
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andReturn();
 
-        HttpSession session = loginResult.getRequest().getSession(false);
-        assertNotNull(session);
-        MockHttpSession authSession = (MockHttpSession) session;
+        Cookie accessTokenCookie = loginResult.getResponse().getCookie("access_token");
+        Cookie refreshTokenCookie = loginResult.getResponse().getCookie("refresh_token");
+        assertNotNull(accessTokenCookie);
+        assertNotNull(refreshTokenCookie);
+        assertTrue(accessTokenCookie.isHttpOnly());
+        assertTrue(refreshTokenCookie.isHttpOnly());
 
-        // 4. Authenticated session can access GET /api/v1/profile
-        mockMvc.perform(get("/api/v1/profile").session(authSession))
+        // 4. Authenticated JWT cookie can access GET /api/v1/profile
+        mockMvc.perform(get("/api/v1/profile").cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("khachlogin@laptophub.vn"));
 
-        // 5. UC-03 Logout invalidates session
-        mockMvc.perform(post("/api/v1/auth/logout")
+        // 4b. Task 6: Refresh Token endpoint /api/v1/auth/refresh rotates token and issues new access token
+        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
                         .with(csrf())
-                        .session(authSession))
+                        .cookie(refreshTokenCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.email").value("khachlogin@laptophub.vn"))
+                .andReturn();
 
-        // 6. Using old session after logout -> 401 Unauthorized
-        mockMvc.perform(get("/api/v1/profile").session(authSession))
+        Cookie newAccessToken = refreshResult.getResponse().getCookie("access_token");
+        Cookie newRefreshToken = refreshResult.getResponse().getCookie("refresh_token");
+        assertNotNull(newAccessToken);
+        assertNotNull(newRefreshToken);
+
+        // 4c. Reusing old refreshToken must be rejected with 401 (Refresh token rotation security)
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .cookie(refreshTokenCookie))
+                .andExpect(status().isUnauthorized());
+
+        // 5. UC-03 Logout invalidates refresh token and clears cookies
+        MvcResult logoutResult = mockMvc.perform(post("/api/v1/auth/logout")
+                        .with(csrf())
+                        .cookie(newAccessToken, newRefreshToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").exists())
+                .andReturn();
+
+        Cookie clearedAccess = logoutResult.getResponse().getCookie("access_token");
+        assertNotNull(clearedAccess);
+        assertEquals(0, clearedAccess.getMaxAge());
+
+        // 6. Requesting profile after logout without valid token -> 401 Unauthorized
+        mockMvc.perform(get("/api/v1/profile"))
                 .andExpect(status().isUnauthorized());
 
         // 7. INACTIVE user login -> 403 Forbidden
@@ -545,13 +665,38 @@ class LaptopshopBeApplicationTests {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession sessionA = (MockHttpSession) loginA.getRequest().getSession(false);
-        assertNotNull(sessionA);
+        Cookie[] cookiesA = loginA.getResponse().getCookies();
+        assertTrue(cookiesA.length > 0);
 
-        // 4. User A updates profile and attempts to tamper with id, email, role, status
+        // 4. User A reads profile while authenticated (GET /api/v1/profile)
+        mockMvc.perform(get("/api/v1/profile")
+                        .cookie(cookiesA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("User A"))
+                .andExpect(jsonPath("$.email").value("usera@laptophub.vn"))
+                .andExpect(jsonPath("$.phone").value("0911111111"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+
+        // 5. Validation errors on PUT /api/v1/profile: empty fullName, invalid phone format
         mockMvc.perform(put("/api/v1/profile")
                         .with(csrf())
-                        .session(sessionA)
+                        .cookie(cookiesA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "fullName": "",
+                                  "phone": "12345",
+                                  "address": "Hà Nội"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists())
+                .andExpect(jsonPath("$.fieldErrors.phone").exists());
+
+        // 6. User A updates profile and attempts to tamper with id, email, role, status
+        mockMvc.perform(put("/api/v1/profile")
+                        .with(csrf())
+                        .cookie(cookiesA)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(String.format("""
                                 {
@@ -572,7 +717,17 @@ class LaptopshopBeApplicationTests {
                 .andExpect(jsonPath("$.role").value("CUSTOMER"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
 
-        // 5. Verify User B was NOT modified at all
+        // 7. Verify GET /api/v1/profile returns updated data
+        mockMvc.perform(get("/api/v1/profile")
+                        .cookie(cookiesA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("User A Đã Cập Nhật"))
+                .andExpect(jsonPath("$.phone").value("0933445566"))
+                .andExpect(jsonPath("$.address").value("123 Nguyễn Văn Cừ, Quận 5, TP.HCM"))
+                .andExpect(jsonPath("$.email").value("usera@laptophub.vn"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"));
+
+        // 8. Verify User B was NOT modified at all
         User userBAfter = userRepository.findById(userBBefore.getId()).orElseThrow();
         assertEquals("User B", userBAfter.getFullName());
         assertEquals("0922222222", userBAfter.getPhone());
@@ -588,28 +743,28 @@ class LaptopshopBeApplicationTests {
                         .content("""
                                 {
                                   "email": "khach@laptophub.demo",
-                                  "password": "Password123!"
+                                  "password": "123456"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-        assertNotNull(session);
+        Cookie[] cookies = login.getResponse().getCookies();
+        assertTrue(cookies.length > 0);
 
         // 1. Get wishlist
-        mockMvc.perform(get("/api/v1/wishlist").session(session))
+        mockMvc.perform(get("/api/v1/wishlist").cookie(cookies))
                 .andExpect(status().isOk());
 
         // 2. Toggle wishlist
         mockMvc.perform(post("/api/v1/wishlist/1/toggle")
                         .with(csrf())
-                        .session(session))
+                        .cookie(cookies))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.laptopId").value(1));
 
         // 3. Get wishlist ids
-        mockMvc.perform(get("/api/v1/wishlist/ids").session(session))
+        mockMvc.perform(get("/api/v1/wishlist/ids").cookie(cookies))
                 .andExpect(status().isOk());
     }
 
@@ -622,19 +777,19 @@ class LaptopshopBeApplicationTests {
                         .content("""
                                 {
                                   "email": "khach@laptophub.demo",
-                                  "password": "Password123!"
+                                  "password": "123456"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-        assertNotNull(session);
+        Cookie[] cookies = login.getResponse().getCookies();
+        assertTrue(cookies.length > 0);
 
         // 1. Add to cart
         mockMvc.perform(post("/api/v1/cart")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -647,14 +802,14 @@ class LaptopshopBeApplicationTests {
                 .andExpect(jsonPath("$.quantity").value(2));
 
         // 2. Get cart
-        mockMvc.perform(get("/api/v1/cart").session(session))
+        mockMvc.perform(get("/api/v1/cart").cookie(cookies))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalQuantity").value(2));
 
         // 3. Update quantity
         mockMvc.perform(put("/api/v1/cart/1")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -667,7 +822,7 @@ class LaptopshopBeApplicationTests {
         // 4. Remove from cart
         mockMvc.perform(delete("/api/v1/cart/1")
                         .with(csrf())
-                        .session(session))
+                        .cookie(cookies))
                 .andExpect(status().isNoContent());
     }
 
@@ -680,14 +835,14 @@ class LaptopshopBeApplicationTests {
                         .content("""
                                 {
                                   "email": "khach@laptophub.demo",
-                                  "password": "Password123!"
+                                  "password": "123456"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-        assertNotNull(session);
+        Cookie[] cookies = login.getResponse().getCookies();
+        assertTrue(cookies.length > 0);
 
         Laptop laptop = laptopRepository.findById(1L).orElseThrow();
         int initialStock = laptop.getStockQuantity();
@@ -695,7 +850,7 @@ class LaptopshopBeApplicationTests {
         // 1. Add item to cart
         mockMvc.perform(post("/api/v1/cart")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -708,7 +863,7 @@ class LaptopshopBeApplicationTests {
         // 2. Place Order COD
         MvcResult orderResult = mockMvc.perform(post("/api/v1/orders")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -731,18 +886,18 @@ class LaptopshopBeApplicationTests {
         long orderId = ((Number) org.springframework.boot.json.JsonParserFactory.getJsonParser().parseMap(responseBody).get("id")).longValue();
 
         // 3. View my orders
-        mockMvc.perform(get("/api/v1/orders/me").session(session))
+        mockMvc.perform(get("/api/v1/orders/me").cookie(cookies))
                 .andExpect(status().isOk());
 
         // 4. View order detail
-        mockMvc.perform(get("/api/v1/orders/me/" + orderId).session(session))
+        mockMvc.perform(get("/api/v1/orders/me/" + orderId).cookie(cookies))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(orderId));
 
         // 5. Cancel PENDING order -> must refund stock
         mockMvc.perform(post("/api/v1/orders/me/" + orderId + "/cancel")
                         .with(csrf())
-                        .session(session))
+                        .cookie(cookies))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
 
@@ -760,23 +915,23 @@ class LaptopshopBeApplicationTests {
                         .content("""
                                 {
                                   "email": "admin@laptophub.demo",
-                                  "password": "Password123!"
+                                  "password": "123456"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andReturn();
 
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-        assertNotNull(session);
+        Cookie[] cookies = login.getResponse().getCookies();
+        assertTrue(cookies.length > 0);
 
         // 1. Admin gets all laptops
-        mockMvc.perform(get("/api/v1/admin/laptops").session(session))
+        mockMvc.perform(get("/api/v1/admin/laptops").cookie(cookies))
                 .andExpect(status().isOk());
 
         // 2. Admin updates stock (UC-15)
         mockMvc.perform(patch("/api/v1/admin/laptops/1/stock")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -787,13 +942,13 @@ class LaptopshopBeApplicationTests {
                 .andExpect(jsonPath("$.stockQuantity").value(25));
 
         // 3. Admin gets all orders (UC-16)
-        mockMvc.perform(get("/api/v1/admin/orders").session(session))
+        mockMvc.perform(get("/api/v1/admin/orders").cookie(cookies))
                 .andExpect(status().isOk());
 
         // 4. Admin advances order status PENDING -> CONFIRMED (UC-17)
         mockMvc.perform(patch("/api/v1/admin/orders/1001/status")
                         .with(csrf())
-                        .session(session)
+                        .cookie(cookies)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -807,7 +962,7 @@ class LaptopshopBeApplicationTests {
         mockMvc.perform(get("/api/v1/admin/reports/sales")
                         .param("fromDate", "2026-01-01")
                         .param("toDate", "2026-12-31")
-                        .session(session))
+                        .cookie(cookies))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completedOrderCount").isNumber())
                 .andExpect(jsonPath("$.totalRevenue").isNumber());

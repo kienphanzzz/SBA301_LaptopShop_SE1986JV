@@ -6,33 +6,35 @@ import { money } from '../data/helpers';
 
 const FALLBACK_IMAGE = '/assets/laptop-silver.svg';
 
+const SPEC_RULES = [
+  { match: /ram/i, label: 'Bộ nhớ RAM' },
+  { match: /ssd|hdd|nvme/i, label: 'Ổ cứng lưu trữ' },
+  { match: /inch|oled|fhd|ips/i, label: 'Màn hình hiển thị' },
+  { match: /rtx|gtx|radeon/i, label: 'Card đồ họa' },
+  { match: /intel|amd|ryzen|apple|core/i, label: 'Vi xử lý (CPU)' },
+];
+
+const DEFAULT_SPEC_LABELS = [
+  'Vi xử lý (CPU)',
+  'Bộ nhớ RAM',
+  'Ổ cứng lưu trữ',
+  'Màn hình / Đồ họa',
+  'Thông số bổ sung',
+];
+
 function parseSpecRows(specsText) {
   if (!specsText || typeof specsText !== 'string') {
     return [];
   }
-  const parts = specsText
+  return specsText
     .split('•')
     .map((item) => item.trim())
-    .filter(Boolean);
-
-  const defaultLabels = ['Vi xử lý (CPU)', 'Bộ nhớ RAM', 'Ổ cứng lưu trữ', 'Màn hình / Đồ họa', 'Thông số bổ sung'];
-
-  return parts.map((value, index) => {
-    const lower = value.toLowerCase();
-    let label = defaultLabels[index] || `Thông số ${index + 1}`;
-    if (lower.includes('ram')) {
-      label = 'Bộ nhớ RAM';
-    } else if (lower.includes('ssd') || lower.includes('hdd') || lower.includes('nvme')) {
-      label = 'Ổ cứng lưu trữ';
-    } else if (lower.includes('inch') || lower.includes('oled') || lower.includes('fhd') || lower.includes('ips')) {
-      label = 'Màn hình hiển thị';
-    } else if (lower.includes('rtx') || lower.includes('gtx') || lower.includes('radeon')) {
-      label = 'Card đồ họa';
-    } else if (lower.includes('intel') || lower.includes('amd') || lower.includes('ryzen') || lower.includes('apple') || lower.includes('core')) {
-      label = 'Vi xử lý (CPU)';
-    }
-    return { label, value };
-  });
+    .filter(Boolean)
+    .map((value, index) => {
+      const matched = SPEC_RULES.find((rule) => rule.match.test(value));
+      const label = matched?.label || DEFAULT_SPEC_LABELS[index] || `Thông số ${index + 1}`;
+      return { label, value };
+    });
 }
 
 export default function ProductDetails({ user, wishIds = [], onAddCart, onToggleWish }) {
