@@ -1,4 +1,4 @@
-﻿package fu.laptopshop.modules.account_catalog.controller;
+package fu.laptopshop.modules.account_catalog.controller;
 
 import fu.laptopshop.common.entity.User;
 import fu.laptopshop.common.repository.UserRepository;
