@@ -99,9 +99,14 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public List<OrderSummaryResponse> getMyOrders(Long userId) {
-        return orderRepository.findByUserIdOrderByOrderDateDesc(userId).stream()
-                .map(OrderServiceImpl::mapToSummaryResponse)
-                .toList();
+        List<Order> orders = orderRepository.findByUserIdOrderByOrderDateDesc(userId);
+        List<OrderSummaryResponse> responses = new ArrayList<>();
+
+        for (Order order : orders) {
+            responses.add(mapToSummaryResponse(order));
+        }
+
+        return responses;
     }
 
     @Override
@@ -155,9 +160,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     public static OrderSummaryResponse mapToSummaryResponse(Order order) {
-        int totalItems = order.getOrderItems() != null
-                ? order.getOrderItems().stream().mapToInt(OrderItem::getQuantity).sum()
-                : 0;
+        int totalItems = 0;
+        if (order.getOrderItems() != null) {
+            for (OrderItem item : order.getOrderItems()) {
+                totalItems += item.getQuantity();
+            }
+        }
 
         return OrderSummaryResponse.builder()
                 .id(order.getId())
@@ -175,18 +183,26 @@ public class OrderServiceImpl implements OrderService {
     }
 
     public static OrderDetailResponse mapToDetailResponse(Order order) {
-        List<OrderItemResponse> itemResponses = order.getOrderItems() != null
-                ? order.getOrderItems().stream()
-                .map(item -> OrderItemResponse.builder()
+        List<OrderItemResponse> itemResponses = new ArrayList<>();
+
+        if (order.getOrderItems() != null) {
+            for (OrderItem item : order.getOrderItems()) {
+                Long laptopId = null;
+                if (item.getLaptop() != null) {
+                    laptopId = item.getLaptop().getId();
+                }
+                BigDecimal subtotal = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+
+                itemResponses.add(OrderItemResponse.builder()
                         .id(item.getId())
-                        .laptopId(item.getLaptop() != null ? item.getLaptop().getId() : null)
+                        .laptopId(laptopId)
                         .productName(item.getProductName())
                         .unitPrice(item.getUnitPrice())
                         .quantity(item.getQuantity())
-                        .subtotal(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                        .build())
-                .toList()
-                : List.of();
+                        .subtotal(subtotal)
+                        .build());
+            }
+        }
 
         return OrderDetailResponse.builder()
                 .id(order.getId())

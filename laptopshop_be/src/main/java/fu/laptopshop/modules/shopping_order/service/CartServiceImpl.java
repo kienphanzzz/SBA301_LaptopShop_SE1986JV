@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,14 +33,17 @@ public class CartServiceImpl implements CartService {
     @Transactional(readOnly = true)
     public CartResponse getCart(Long userId) {
         List<CartItem> cartItems = cartItemRepository.findByUserIdOrderByCreatedAtAsc(userId);
-        List<CartItemResponse> responses = cartItems.stream()
-                .map(this::mapToResponse)
-                .toList();
+        List<CartItemResponse> responses = new ArrayList<>();
 
-        int totalQuantity = responses.stream().mapToInt(CartItemResponse::getQuantity).sum();
-        BigDecimal totalAmount = responses.stream()
-                .map(CartItemResponse::getSubtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        int totalQuantity = 0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        for (CartItem item : cartItems) {
+            CartItemResponse response = mapToResponse(item);
+            responses.add(response);
+            totalQuantity += response.getQuantity();
+            totalAmount = totalAmount.add(response.getSubtotal());
+        }
 
         return CartResponse.builder()
                 .items(responses)
@@ -59,7 +63,10 @@ public class CartServiceImpl implements CartService {
         }
 
         Optional<CartItem> existing = cartItemRepository.findByUserIdAndLaptopId(userId, request.getLaptopId());
-        int currentQty = existing.map(CartItem::getQuantity).orElse(0);
+        int currentQty = 0;
+        if (existing.isPresent()) {
+            currentQty = existing.get().getQuantity();
+        }
         int newQty = currentQty + request.getQuantity();
 
         if (newQty > laptop.getStockQuantity()) {
@@ -111,8 +118,10 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public void removeFromCart(Long userId, Long laptopId) {
-        cartItemRepository.findByUserIdAndLaptopId(userId, laptopId)
-                .ifPresent(cartItemRepository::delete);
+        Optional<CartItem> existing = cartItemRepository.findByUserIdAndLaptopId(userId, laptopId);
+        if (existing.isPresent()) {
+            cartItemRepository.delete(existing.get());
+        }
     }
 
     @Override

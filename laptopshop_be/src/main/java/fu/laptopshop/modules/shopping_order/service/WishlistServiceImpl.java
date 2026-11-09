@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,17 +29,27 @@ public class WishlistServiceImpl implements WishlistService {
     @Override
     @Transactional(readOnly = true)
     public List<WishlistItemResponse> getWishlist(Long userId) {
-        return wishlistItemRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(this::mapToResponse)
-                .toList();
+        List<WishlistItem> items = wishlistItemRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        List<WishlistItemResponse> responseList = new ArrayList<>();
+
+        for (WishlistItem item : items) {
+            responseList.add(mapToResponse(item));
+        }
+
+        return responseList;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Long> getWishlistLaptopIds(Long userId) {
-        return wishlistItemRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(item -> item.getLaptop().getId())
-                .toList();
+        List<WishlistItem> items = wishlistItemRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        List<Long> idList = new ArrayList<>();
+
+        for (WishlistItem item : items) {
+            idList.add(item.getLaptop().getId());
+        }
+
+        return idList;
     }
 
     @Override
@@ -77,8 +88,10 @@ public class WishlistServiceImpl implements WishlistService {
     @Override
     @Transactional
     public void removeFromWishlist(Long userId, Long laptopId) {
-        wishlistItemRepository.findByUserIdAndLaptopId(userId, laptopId)
-                .ifPresent(wishlistItemRepository::delete);
+        Optional<WishlistItem> existing = wishlistItemRepository.findByUserIdAndLaptopId(userId, laptopId);
+        if (existing.isPresent()) {
+            wishlistItemRepository.delete(existing.get());
+        }
     }
 
     private WishlistItemResponse mapToResponse(WishlistItem item) {
