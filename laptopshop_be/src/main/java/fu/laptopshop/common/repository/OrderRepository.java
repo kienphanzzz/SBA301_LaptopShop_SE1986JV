@@ -37,11 +37,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             JOIN FETCH o.user u
             WHERE (:status IS NULL OR o.status = :status)
               AND (
-                   :keyword IS NULL
-                   OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%')
-                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(o.receiverName) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(o.phone) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                   CAST(:keyword AS string) IS NULL
+                   OR CAST(o.id AS string) LIKE CONCAT('%', CAST(:keyword AS string), '%')
+                   OR LOWER(u.email) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
+                   OR LOWER(o.receiverName) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
+                   OR LOWER(o.phone) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
               )
             """)
     List<Order> searchAdminOrders(

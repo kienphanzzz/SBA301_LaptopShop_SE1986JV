@@ -53,8 +53,7 @@ public class Laptop extends BaseEntity {
     @Column(name = "specs", nullable = false, length = 500)
     private String specs;
 
-    @Nationalized
-    @Column(name = "description", columnDefinition = "NVARCHAR(MAX)")
+    @Column(name = "description")
     private String description;
 
     @Column(name = "image", length = 500)

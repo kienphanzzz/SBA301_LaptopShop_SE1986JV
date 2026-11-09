@@ -81,6 +81,8 @@ public class SecurityConfig {
                         )
                 )
                 .authorizeHttpRequests((authorize) -> authorize
+                        // Health check & Root endpoint
+                        .requestMatchers(HttpMethod.GET, "/", "/health", "/api/v1/health").permitAll()
                         // UC-05 & UC-06: Guest và Customer xem danh sách, chi tiết laptop, thương hiệu, danh mục
                         .requestMatchers(HttpMethod.GET, "/api/v1/laptops/**", "/api/v1/brands/**", "/api/v1/categories/**").permitAll()
                         // UC-01, UC-02, UC-03 & Refresh Token (Task 5 & 6)

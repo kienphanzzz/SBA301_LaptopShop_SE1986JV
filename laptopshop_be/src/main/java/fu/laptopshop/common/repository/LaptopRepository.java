@@ -34,12 +34,12 @@ public interface LaptopRepository extends JpaRepository<Laptop, Long> {
               AND (:minPrice IS NULL OR l.price >= :minPrice)
               AND (:maxPrice IS NULL OR l.price <= :maxPrice)
               AND (
-                   :keyword IS NULL
-                   OR LOWER(l.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(l.specs) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR (l.description IS NOT NULL AND LOWER(l.description) LIKE LOWER(CONCAT('%', :keyword, '%')))
-                   OR LOWER(l.sku) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(b.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                   CAST(:keyword AS string) IS NULL
+                   OR LOWER(l.name) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
+                   OR LOWER(l.specs) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
+                   OR (l.description IS NOT NULL AND LOWER(l.description) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%'))
+                   OR LOWER(l.sku) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
+                   OR LOWER(b.name) LIKE CONCAT('%', LOWER(CAST(:keyword AS string)), '%')
               )
             """)
     List<Laptop> searchCatalogLaptops(
