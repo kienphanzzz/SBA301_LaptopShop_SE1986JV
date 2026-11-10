@@ -126,6 +126,13 @@ public class SecurityConfig {
 
     private static final class CsrfCookieFilter extends OncePerRequestFilter {
         @Override
+        protected boolean shouldNotFilter(HttpServletRequest request) {
+            // Chỉ /auth/csrf được cấp token/cookie mới. Nếu mọi request đều sinh cookie, các GET song song
+            // khi chưa có cookie sẽ ghi đè XSRF-TOKEN của nhau và lệch với token FE đang giữ -> 403.
+            return !request.getRequestURI().endsWith("/api/v1/auth/csrf");
+        }
+
+        @Override
         protected void doFilterInternal(
                 HttpServletRequest request,
                 HttpServletResponse response,
