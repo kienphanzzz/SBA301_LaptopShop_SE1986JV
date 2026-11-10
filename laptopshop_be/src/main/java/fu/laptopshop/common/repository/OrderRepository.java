@@ -54,11 +54,43 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT o
             FROM Order o
             WHERE o.status = :status
-              AND (:startDate IS NULL OR o.orderDate >= :startDate)
-              AND (:endDate IS NULL OR o.orderDate <= :endDate)
             ORDER BY o.orderDate DESC
             """)
-    List<Order> findOrdersByStatusBetween(
+    List<Order> findOrdersByStatus(@Param("status") OrderStatus status);
+
+    @Query("""
+            SELECT o
+            FROM Order o
+            WHERE o.status = :status
+              AND o.orderDate >= :startDate
+            ORDER BY o.orderDate DESC
+            """)
+    List<Order> findOrdersByStatusAndOrderDateAfter(
+            @Param("status") OrderStatus status,
+            @Param("startDate") LocalDateTime startDate
+    );
+
+    @Query("""
+            SELECT o
+            FROM Order o
+            WHERE o.status = :status
+              AND o.orderDate <= :endDate
+            ORDER BY o.orderDate DESC
+            """)
+    List<Order> findOrdersByStatusAndOrderDateBefore(
+            @Param("status") OrderStatus status,
+            @Param("endDate") LocalDateTime endDate
+    );
+
+    @Query("""
+            SELECT o
+            FROM Order o
+            WHERE o.status = :status
+              AND o.orderDate >= :startDate
+              AND o.orderDate <= :endDate
+            ORDER BY o.orderDate DESC
+            """)
+    List<Order> findOrdersByStatusAndOrderDateBetween(
             @Param("status") OrderStatus status,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate

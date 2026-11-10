@@ -75,7 +75,16 @@ public class AdminOrderServiceImpl implements AdminOrderService {
         LocalDateTime start = fromDate != null ? fromDate.atStartOfDay() : null;
         LocalDateTime end = toDate != null ? toDate.atTime(LocalTime.MAX) : null;
 
-        List<Order> completedOrders = orderRepository.findOrdersByStatusBetween(OrderStatus.COMPLETED, start, end);
+        List<Order> completedOrders;
+        if (start == null && end == null) {
+            completedOrders = orderRepository.findOrdersByStatus(OrderStatus.COMPLETED);
+        } else if (start == null) {
+            completedOrders = orderRepository.findOrdersByStatusAndOrderDateBefore(OrderStatus.COMPLETED, end);
+        } else if (end == null) {
+            completedOrders = orderRepository.findOrdersByStatusAndOrderDateAfter(OrderStatus.COMPLETED, start);
+        } else {
+            completedOrders = orderRepository.findOrdersByStatusAndOrderDateBetween(OrderStatus.COMPLETED, start, end);
+        }
         List<OrderSummaryResponse> summaries = completedOrders.stream()
                 .map(OrderServiceImpl::mapToSummaryResponse)
                 .toList();
