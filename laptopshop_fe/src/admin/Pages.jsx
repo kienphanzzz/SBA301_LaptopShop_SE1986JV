@@ -6,9 +6,17 @@ import { brandName, money, nextOrderStatus, orderLabels } from '../data/helpers'
 import { adminApi } from '../api/adminApi';
 import { getApiErrorMessage } from '../api/catalogApi';
 
-function AdminSection({ title, description, children }) {
-  return <Container className="admin-page pb-5"><div className="admin-page-title"><h3>{title}</h3>{description && <p>{description}</p>}</div>{children}</Container>;
+function AdminSection({ title, children }) {
+  return (
+    <Container className="admin-page pb-5">
+      <div className="admin-page-title">
+        <h3>{title}</h3>
+      </div>
+      {children}
+    </Container>
+  );
 }
+
 
 export function AdminDashboard({ data }) {
   const finished = data.orders.filter((item) => item.status === 'COMPLETED');
