@@ -66,13 +66,14 @@ public class SecurityConfig {
         );
 
         CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
-        // Giữ null để Spring Security 6 không yêu cầu token deferred dạng XOR/mask phức tạp
         requestHandler.setCsrfRequestAttributeName(null);
 
         http.cors(Customizer.withDefaults())
                 .csrf((csrf) -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(requestHandler)
+                        // Bỏ qua kiểm tra CSRF cho các route auth (login, logout, refresh, register)
+                        .ignoringRequestMatchers("/api/v1/auth/**")
                 )
                 .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
                 .formLogin(form -> form.disable())
@@ -132,7 +133,6 @@ public class SecurityConfig {
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
             String path = request.getServletPath();
-            // Tránh null hoặc query string làm lệch khớp
             if (path == null) {
                 path = request.getRequestURI();
             }
@@ -147,7 +147,6 @@ public class SecurityConfig {
         ) throws ServletException, IOException {
             CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
             if (csrfToken != null) {
-                // Buộc sinh Set-Cookie XSRF-TOKEN
                 String token = csrfToken.getToken();
                 if (token != null) {
                     response.setHeader(csrfToken.getHeaderName(), token);
