@@ -1,4 +1,4 @@
-import { axiosClient, ensureCsrfToken } from './axiosClient';
+import { axiosClient, resetCsrfToken } from './axiosClient';
 
 export const authApi = {
   async register(payload) {
@@ -8,15 +8,15 @@ export const authApi = {
 
   async login(payload) {
     const response = await axiosClient.post('/auth/login', payload);
-    // Sau khi đăng nhập thành công, làm mới CSRF token để đồng bộ token mới cho các request tiếp theo
-    await ensureCsrfToken(true).catch(() => {});
+    // Sau khi đăng nhập thành công, bỏ token cache để request kế tiếp lấy token khớp cookie hiện tại
+    resetCsrfToken();
     return response.data;
   },
 
   async logout() {
     const response = await axiosClient.post('/auth/logout');
-    // Sau khi đăng xuất, làm mới CSRF token cho các request tiếp theo
-    await ensureCsrfToken(true).catch(() => {});
+    // Sau khi đăng xuất, bỏ token cache cho các request tiếp theo
+    resetCsrfToken();
     return response.data;
   },
 

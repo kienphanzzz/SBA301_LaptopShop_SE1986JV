@@ -38,17 +38,19 @@ export async function ensureCsrfToken(forceRefresh = false) {
   }
 
   if (!csrfPromise) {
+    // timeout dài để chịu được Render Free khởi động nguội (~50s)
     csrfPromise = axios
-      .get(`${BASE_URL}/auth/csrf`, { withCredentials: true, timeout: 8000 })
+      .get(`${BASE_URL}/auth/csrf`, { withCredentials: true, timeout: 60000 })
       .then((res) => {
         const token =
-          res.headers?.['x-xsrf-token'] ||
           res.data?.token ||
+          res.headers?.['x-xsrf-token'] ||
           readCsrfCookie();
-        if (token) {
-          cachedCsrfToken = token;
+        if (!token) {
+          throw new Error('Không lấy được CSRF token từ máy chủ.');
         }
-        return cachedCsrfToken;
+        cachedCsrfToken = token;
+        return token;
       })
       .finally(() => {
         csrfPromise = null;
@@ -62,22 +64,21 @@ axiosClient.interceptors.request.use(async (config) => {
   const method = (config.method || 'get').toLowerCase();
   if (['post', 'put', 'patch', 'delete'].includes(method)) {
     const token = await ensureCsrfToken(false);
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers['X-XSRF-TOKEN'] = token;
-    }
+    config.headers.set('X-XSRF-TOKEN', token);
   }
   return config;
 });
 
+// Xóa token đã cache để request thay đổi dữ liệu kế tiếp lấy lại token khớp với cookie hiện tại
+export function resetCsrfToken() {
+  cachedCsrfToken = null;
+}
+
+// Lưu ý: KHÔNG cập nhật cachedCsrfToken từ header x-xsrf-token của response bất kỳ.
+// Các GET song song khi chưa có cookie mỗi request sinh một token khác nhau, cookie cuối cùng
+// trình duyệt giữ có thể không trùng với header của response đến sau -> 403. Token chỉ lấy từ /auth/csrf.
 axiosClient.interceptors.response.use(
-  (response) => {
-    const headerToken = response.headers?.['x-xsrf-token'];
-    if (headerToken) {
-      cachedCsrfToken = headerToken;
-    }
-    return response;
-  },
+  (response) => response,
   async (error) => {
     const originalConfig = error.config;
     const status = error.response?.status;
@@ -89,16 +90,12 @@ axiosClient.interceptors.response.use(
       status === 403 &&
       originalConfig &&
       !originalConfig._csrfRetried &&
-      ['post', 'put', 'patch', 'delete'].includes(method) &&
-      !url.includes('/auth/login')
+      ['post', 'put', 'patch', 'delete'].includes(method)
     ) {
       originalConfig._csrfRetried = true;
       const freshToken = await ensureCsrfToken(true);
-      if (freshToken) {
-        originalConfig.headers = originalConfig.headers || {};
-        originalConfig.headers['X-XSRF-TOKEN'] = freshToken;
-        return axiosClient(originalConfig);
-      }
+      originalConfig.headers.set('X-XSRF-TOKEN', freshToken);
+      return axiosClient(originalConfig);
     }
 
     // 2. Xử lý Token hết hạn (401 Unauthorized) -> Tự động gọi Refresh Token (Task 6)
