@@ -66,9 +66,12 @@ export const adminApi = {
     const response = await axiosClient.get('/admin/reports/sales', {
       params: { fromDate: fromDate || undefined, toDate: toDate || undefined },
     });
+    const data = response.data || {};
     return {
-      ...response.data,
-      orders: requireArray(response.data?.orders, 'báo cáo doanh số').map(normalizeOrder),
+      ...data,
+      completedOrderCount: Number(data.completedOrderCount) || 0,
+      totalRevenue: Number(data.totalRevenue) || 0,
+      orders: Array.isArray(data.orders) ? data.orders.map(normalizeOrder) : [],
     };
   },
 };
