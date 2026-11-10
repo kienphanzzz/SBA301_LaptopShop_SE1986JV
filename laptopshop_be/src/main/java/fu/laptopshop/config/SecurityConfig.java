@@ -66,6 +66,7 @@ public class SecurityConfig {
         );
 
         CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+        // Giữ null để Spring Security 6 không yêu cầu token deferred dạng XOR/mask phức tạp
         requestHandler.setCsrfRequestAttributeName(null);
 
         http.cors(Customizer.withDefaults())
@@ -92,12 +93,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/", "/health", "/api/v1/health").permitAll()
                         // UC-05 & UC-06: Guest và Customer xem danh sách, chi tiết laptop, thương hiệu, danh mục
                         .requestMatchers(HttpMethod.GET, "/api/v1/laptops/**", "/api/v1/brands/**", "/api/v1/categories/**").permitAll()
-                        // UC-01, UC-02, UC-03 & Refresh Token (Task 5 & 6)
+                        // UC-01, UC-02, UC-03 & Refresh Token
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                         // UC-04: Profile bắt buộc phải có JWT hợp lệ
                         .requestMatchers("/api/v1/profile/**").hasAnyRole("CUSTOMER", "ADMIN")
-                        // UC-07 -> UC-12: Wishlist, Cart và Orders dành cho Customer (Admin cũng có thể truy cập nếu cần)
+                        // UC-07 -> UC-12: Wishlist, Cart và Orders dành cho Customer
                         .requestMatchers("/api/v1/wishlist/**").hasAnyRole("CUSTOMER", "ADMIN")
                         .requestMatchers("/api/v1/cart/**").hasAnyRole("CUSTOMER", "ADMIN")
                         .requestMatchers("/api/v1/orders/**").hasAnyRole("CUSTOMER", "ADMIN")
@@ -125,11 +126,17 @@ public class SecurityConfig {
     }
 
     private static final class CsrfCookieFilter extends OncePerRequestFilter {
+
+        private static final String CSRF_ENDPOINT = "/api/v1/auth/csrf";
+
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
-            // Chỉ /auth/csrf được cấp token/cookie mới. Nếu mọi request đều sinh cookie, các GET song song
-            // khi chưa có cookie sẽ ghi đè XSRF-TOKEN của nhau và lệch với token FE đang giữ -> 403.
-            return !request.getRequestURI().endsWith("/api/v1/auth/csrf");
+            String path = request.getServletPath();
+            // Tránh null hoặc query string làm lệch khớp
+            if (path == null) {
+                path = request.getRequestURI();
+            }
+            return !CSRF_ENDPOINT.equals(path);
         }
 
         @Override
@@ -139,8 +146,12 @@ public class SecurityConfig {
                 FilterChain filterChain
         ) throws ServletException, IOException {
             CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
-            if (csrfToken != null && csrfToken.getToken() != null) {
-                response.setHeader(csrfToken.getHeaderName(), csrfToken.getToken());
+            if (csrfToken != null) {
+                // Buộc sinh Set-Cookie XSRF-TOKEN
+                String token = csrfToken.getToken();
+                if (token != null) {
+                    response.setHeader(csrfToken.getHeaderName(), token);
+                }
             }
             filterChain.doFilter(request, response);
         }
